@@ -5,6 +5,8 @@ import {
   signInAnonymously,
   signInWithCustomToken,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged
@@ -27,17 +29,16 @@ import {
 // ==========================================
 // Firebase Configuration & Initialization
 // ==========================================
-// Firebaseコンソールで取得したご自身の firebaseConfig の値に書き換えてください
 const firebaseConfig = typeof __firebase_config !== 'undefined'
   ? JSON.parse(__firebase_config)
   : {
-       apiKey: "AIzaSyBbqWjybJrRu4VR90CJohRk-QsbFEFlrj8",
-       authDomain: "learndaily-69355.firebaseapp.com",
-       projectId: "learndaily-69355",
-       storageBucket: "learndaily-69355.firebasestorage.app",
-       messagingSenderId: "161457830120",
-       appId: "1:161457830120:web:d8465efae2b3e95c12f15d",
-       measurementId: "G-RYTSDGW0GP"
+      apiKey: "AIzaSyBbqWjybJrRu4VR90CJohRk-QsbFEFlrj8",
+      authDomain: "learndaily-69355.firebaseapp.com",
+      projectId: "learndaily-69355",
+      storageBucket: "learndaily-69355.firebasestorage.app",
+      messagingSenderId: "161457830120",
+      appId: "1:161457830120:web:d8465efae2b3e95c12f15d",
+      measurementId: "G-RYTSDGW0GP"
     };
 
 const app = initializeApp(firebaseConfig);
@@ -674,6 +675,19 @@ export default function App() {
 
     initAuth();
 
+    // Check for redirect result when fallback is triggered
+    getRedirectResult(auth).then((result) => {
+      if (result && result.user) {
+        setUser(result.user);
+        setUserProfile({
+          name: result.user.displayName || '学習メンバー',
+          avatar: result.user.photoURL || ''
+        });
+      }
+    }).catch((err) => {
+      console.warn("Redirect authentication result notice:", err);
+    });
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
@@ -738,13 +752,24 @@ export default function App() {
         throw new Error("DEMO_KEY_DETECTED");
       }
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (popupErr) {
+        if (popupErr.code === 'auth/popup-blocked' || popupErr.code === 'auth/popup-closed-by-user') {
+          console.warn("Popup blocked or closed. Falling back to redirect mode...", popupErr);
+          await signInWithRedirect(auth, provider);
+          return;
+        }
+        throw popupErr;
+      }
     } catch (err) {
       console.error("Login failed:", err);
       if (err.message === "DEMO_KEY_DETECTED" || err.code === "auth/invalid-api-key") {
-        setAuthError("⚠️ FirebaseのAPIキーが未設定です。画面上で『ゲスト名前登録』をしてローカル保存するか、Firebase設定を行ってください。");
+        setAuthError("⚠️ FirebaseのAPIキーが未設定です。画面上で『名前だけ登録』をしてローカル保存するか、Firebase設定を行ってください。");
+      } else if (err.code === "auth/configuration-not-found") {
+        setAuthError("⚠️ FirebaseコンソールでGoogleログインが有効になっていません。「Authentication」→「サインイン方法」で「Google」を有効（オン）に設定してください。");
       } else if (err.code === "auth/popup-blocked") {
-        setAuthError("ブラウザのポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。");
+        setAuthError("ブラウザのポップアップがブロックされました。リダイレクトログインを試みるか、ブラウザのポップアップ許可を行ってください。");
       } else if (err.code === "auth/unauthorized-domain") {
         setAuthError("Firebaseコンソールの Authentication -> 設定 -> 承認済みドメイン に、現在のWebアドレスを追加してください。");
       } else {
