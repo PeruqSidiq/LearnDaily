@@ -732,13 +732,31 @@ export default function App() {
     setIsLoggingIn(true);
     setAuthError(null);
     try {
+      if (firebaseConfig.apiKey === "demo-api-key") {
+        throw new Error("DEMO_KEY_DETECTED");
+      }
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
     } catch (err) {
       console.error("Login failed:", err);
-      setAuthError("Googleログインに失敗しました。ポップアップが許可されているかご確認ください。");
+      if (err.message === "DEMO_KEY_DETECTED" || err.code === "auth/invalid-api-key") {
+        setAuthError("⚠️ FirebaseのAPIキーが未設定です。画面上で『ゲスト名前登録』をしてローカル保存するか、Firebase設定を行ってください。");
+      } else if (err.code === "auth/popup-blocked") {
+        setAuthError("ブラウザのポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。");
+      } else if (err.code === "auth/unauthorized-domain") {
+        setAuthError("Firebaseコンソールの Authentication -> 設定 -> 承認済みドメイン に、現在のWebアドレスを追加してください。");
+      } else {
+        setAuthError(`Googleログインに失敗しました (${err.code || err.message})。名前を直接登録して保存も可能です。`);
+      }
     } finally {
       setIsLoggingIn(false);
+    }
+  };
+
+  const handleSetLocalProfileName = () => {
+    const name = prompt("お子様のお名前（例: たろう、じろう）を入力してください:", userProfile.name);
+    if (name && name.trim() !== "") {
+      setUserProfile(prev => ({ ...prev, name: name.trim() }));
     }
   };
 
@@ -1021,10 +1039,16 @@ export default function App() {
 
       {/* Auth Error Toast if any */}
       {authError && (
-        <div className="bg-rose-100 border border-rose-300 text-rose-800 text-xs p-3 text-center flex items-center justify-center gap-2">
-          <AlertCircle className="w-4 h-4 text-rose-600" />
+        <div className="bg-amber-50 border-b border-amber-200 text-amber-900 text-xs p-3 text-center flex items-center justify-center gap-2 flex-wrap">
+          <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
           <span>{authError}</span>
-          <button onClick={() => setAuthError(null)} className="underline ml-2 font-bold">閉じる</button>
+          <button 
+            onClick={handleSetLocalProfileName}
+            className="bg-amber-600 text-white font-bold px-2 py-0.5 rounded text-[11px] hover:bg-amber-700 ml-1"
+          >
+            名前だけ登録して保存
+          </button>
+          <button onClick={() => setAuthError(null)} className="underline ml-2 font-bold text-slate-500">閉じる</button>
         </div>
       )}
 
