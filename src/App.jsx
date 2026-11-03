@@ -27,15 +27,17 @@ import {
 // ==========================================
 // Firebase Configuration & Initialization
 // ==========================================
+// Firebaseコンソールで取得したご自身の firebaseConfig の値に書き換えてください
 const firebaseConfig = typeof __firebase_config !== 'undefined'
   ? JSON.parse(__firebase_config)
   : {
-      apiKey: "demo-api-key",
-      authDomain: "demo-app.firebaseapp.com",
-      projectId: "demo-app",
-      storageBucket: "demo-app.appspot.com",
-      messagingSenderId: "123456789",
-      appId: "1:123456789:web:abcdef"
+       apiKey: "AIzaSyBbqWjybJrRu4VR90CJohRk-QsbFEFlrj8",
+       authDomain: "learndaily-69355.firebaseapp.com",
+       projectId: "learndaily-69355",
+       storageBucket: "learndaily-69355.firebasestorage.app",
+       messagingSenderId: "161457830120",
+       appId: "1:161457830120:web:d8465efae2b3e95c12f15d",
+       measurementId: "G-RYTSDGW0GP"
     };
 
 const app = initializeApp(firebaseConfig);
