@@ -5,16 +5,12 @@ import {
   signInAnonymously,
   signInWithCustomToken,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged
 } from 'firebase/auth';
 import {
   getFirestore,
-  doc,
-  setDoc,
   collection,
   onSnapshot,
   addDoc
@@ -23,7 +19,8 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar
 } from 'recharts';
 import {
-  Trophy, BookOpen, Calculator, CheckCircle2, XCircle, User, LogIn, LogOut, Award, BarChart2, RotateCcw, ChevronRight, Clock, Star, Sparkles, BrainCircuit, Check, AlertCircle, History, ArrowRight, Calendar, Flame, RefreshCw, Zap
+  Trophy, BookOpen, Calculator, CheckCircle2, User, LogIn, LogOut, BarChart2, ChevronRight, Sparkles, BrainCircuit, Check, AlertCircle, History, ArrowRight, Calendar, Flame, RefreshCw, Zap,
+  ShieldCheck, Lock, Unlock, Users, TrendingUp
 } from 'lucide-react';
 
 // ==========================================
@@ -529,7 +526,7 @@ const UYGHUR_QUESTIONS = [
   }
 ];
 
-// Daily Question Generator using Gemini API with Local Dynamic Fallback
+// Daily Question Generator using Gemini API with Local Fallback
 const fetchAIDailyQuestions = async (subject = 'combined', grade = 'grade3_4') => {
   const gradeLabel = grade === 'grade2' ? '小学2年生' : grade === 'grade5' ? '小学5年生' : '小学3〜4年生';
   
@@ -537,10 +534,9 @@ const fetchAIDailyQuestions = async (subject = 'combined', grade = 'grade3_4') =
 ${gradeLabel}対象の四谷大塚入塾テストレベルの選択肢付き問題を生成してください。
 レスポンスは必ず指定されたJSONフォーマットのみで返してください。`;
 
-  const userQuery = `四谷大塚の入塾テスト対策として、${gradeLabel}向けの${subject === 'math' ? '算数10問' : subject === 'japanese' ? '国語10問' : '算数10問と国語10問（合計20問）'}の新作テスト問題を作成してください。
-算数と国語のバランスの取れたレベルで出題してください。`;
+  const userQuery = `四谷大塚の入塾テスト対策として、${gradeLabel}向けの${subject === 'math' ? '算数10問' : subject === 'japanese' ? '国語10問' : '算数10問と国語10問（合計20問）'}の新作テスト問題を作成してください。`;
 
-  const apiKey = ""; // Canvas runtime automatically injects key if left blank
+  const apiKey = "";
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
 
   const payload = {
@@ -588,7 +584,7 @@ ${gradeLabel}対象の四谷大塚入塾テストレベルの選択肢付き問�
     console.warn("AI Question generation falling back to dynamic pool:", err);
   }
 
-  // Fallback Dynamic Generator based on grade
+  // Fallback Dynamic Generator
   if (grade === 'grade2') {
     return [...MATH_QUESTIONS_G2, ...JAPANESE_QUESTIONS_G2];
   }
@@ -602,8 +598,15 @@ export default function App() {
   const [authError, setAuthError] = useState(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // App Navigation & Selected Grade States
-  const [activeTab, setActiveTab] = useState('home'); // 'home', 'quiz', 'results', 'history'
+  // Parent Admin Auth States (Fixed credentials: admin / family123)
+  const [isParentAdmin, setIsParentAdmin] = useState(false);
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
+  const [adminUsernameInput, setAdminUsernameInput] = useState('');
+  const [adminPasswordInput, setAdminPasswordInput] = useState('');
+  const [adminAuthError, setAdminAuthError] = useState('');
+
+  // Navigation & Grade States
+  const [activeTab, setActiveTab] = useState('home'); // 'home', 'quiz', 'results', 'history', 'admin'
   const [selectedSubject, setSelectedSubject] = useState('math'); // 'math', 'japanese', 'uyghur', 'combined', 'daily'
   const [selectedGrade, setSelectedGrade] = useState('grade3_4'); // 'grade2', 'grade3_4', 'grade5'
   
@@ -612,16 +615,27 @@ export default function App() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [userAnswers, setUserAnswers] = useState([]);
   const [quizStartTime, setQuizStartTime] = useState(null);
-  const [quizFinished, setQuizFinished] = useState(false);
   const [selectedOption, setSelectedOption] = useState(null);
 
-  // Firestore & Local Storage History
+  // History & Storage
   const [historyDocs, setHistoryDocs] = useState([]);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
 
-  // Daily Mode States
+  // Daily AI Mode States
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const todayStr = getTodayDateString();
+
+  // Initialize Local Storage Fallback
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('learn_daily_quiz_history');
+      if (saved) {
+        setHistoryDocs(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.warn("Could not load local history:", e);
+    }
+  }, []);
 
   // Compute Daily Streak
   const streakInfo = useMemo(() => {
@@ -629,7 +643,7 @@ export default function App() {
 
     const dates = Array.from(new Set(
       historyDocs.map(item => {
-        if (!item?.timestamp) return null;
+        if (!item.timestamp) return null;
         const d = new Date(item.timestamp);
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       }).filter(Boolean)
@@ -657,36 +671,21 @@ export default function App() {
     return { streak, testedToday };
   }, [historyDocs, todayStr]);
 
-  // Auth Initialization & Observer
+  // Auth Observer
   useEffect(() => {
     const initAuth = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          if (!auth.currentUser) {
-            await signInAnonymously(auth);
-          }
+        } else if (!auth.currentUser) {
+          await signInAnonymously(auth);
         }
       } catch (err) {
-        console.warn("Auth initialization notice:", err);
+        console.error("Auth initialization notice:", err);
       }
     };
 
     initAuth();
-
-    // Check for redirect result when fallback is triggered
-    getRedirectResult(auth).then((result) => {
-      if (result && result.user) {
-        setUser(result.user);
-        setUserProfile({
-          name: result.user.displayName || '学習メンバー',
-          avatar: result.user.photoURL || ''
-        });
-      }
-    }).catch((err) => {
-      console.warn("Redirect authentication result notice:", err);
-    });
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -701,45 +700,27 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Fetch History from Firestore with LocalStorage Fallback
+  // Sync Firestore History
   useEffect(() => {
-    // Load local history first
-    try {
-      const localData = localStorage.getItem('learn_daily_quiz_history');
-      if (localData) {
-        setHistoryDocs(JSON.parse(localData));
-      }
-    } catch (e) {
-      console.warn("Local storage read error:", e);
-    }
-
-    if (!user) return;
+    if (!user || user.isAnonymous) return;
 
     try {
       const resultsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'quiz_results');
-
       const unsubscribe = onSnapshot(
         resultsRef,
         (snapshot) => {
           const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-          if (items.length > 0) {
-            setHistoryDocs(items);
-            try {
-              localStorage.setItem('learn_daily_quiz_history', JSON.stringify(items));
-            } catch (e) {
-              console.warn("Local storage save error:", e);
-            }
-          }
+          setHistoryDocs(items);
+          localStorage.setItem('learn_daily_quiz_history', JSON.stringify(items));
         },
         (error) => {
-          console.warn("Firestore sync warning (falling back to local storage):", error);
+          console.warn("Firestore listener error:", error);
         }
       );
-
       return () => unsubscribe();
-    } catch (err) {
-      console.warn("Firestore collection initialization notice:", err);
+    } catch (e) {
+      console.warn("Firestore subscription error:", e);
     }
   }, [user]);
 
@@ -748,42 +729,21 @@ export default function App() {
     setIsLoggingIn(true);
     setAuthError(null);
     try {
-      if (firebaseConfig.apiKey === "demo-api-key") {
-        throw new Error("DEMO_KEY_DETECTED");
-      }
       const provider = new GoogleAuthProvider();
-      try {
-        await signInWithPopup(auth, provider);
-      } catch (popupErr) {
-        if (popupErr.code === 'auth/popup-blocked' || popupErr.code === 'auth/popup-closed-by-user') {
-          console.warn("Popup blocked or closed. Falling back to redirect mode...", popupErr);
-          await signInWithRedirect(auth, provider);
-          return;
-        }
-        throw popupErr;
-      }
+      await signInWithPopup(auth, provider);
     } catch (err) {
       console.error("Login failed:", err);
-      if (err.message === "DEMO_KEY_DETECTED" || err.code === "auth/invalid-api-key") {
-        setAuthError("⚠️ FirebaseのAPIキーが未設定です。画面上で『名前だけ登録』をしてローカル保存するか、Firebase設定を行ってください。");
-      } else if (err.code === "auth/configuration-not-found") {
-        setAuthError("⚠️ FirebaseコンソールでGoogleログインが有効になっていません。「Authentication」→「サインイン方法」で「Google」を有効（オン）に設定してください。");
-      } else if (err.code === "auth/popup-blocked") {
-        setAuthError("ブラウザのポップアップがブロックされました。リダイレクトログインを試みるか、ブラウザのポップアップ許可を行ってください。");
-      } else if (err.code === "auth/unauthorized-domain") {
-        setAuthError("Firebaseコンソールの Authentication -> 設定 -> 承認済みドメイン に、現在のWebアドレスを追加してください。");
-      } else {
-        setAuthError(`Googleログインに失敗しました (${err.code || err.message})。名前を直接登録して保存も可能です。`);
-      }
+      setAuthError("Googleログインに失敗しました。名前を直接登録してデータ保存することも可能です。");
     } finally {
       setIsLoggingIn(false);
     }
   };
 
   const handleSetLocalProfileName = () => {
-    const name = prompt("お子様のお名前（例: たろう、じろう）を入力してください:", userProfile.name);
-    if (name && name.trim() !== "") {
+    const name = prompt("お子様またはご家族の名前を入力してください:", userProfile.name);
+    if (name && name.trim()) {
       setUserProfile(prev => ({ ...prev, name: name.trim() }));
+      setAuthError(null);
     }
   };
 
@@ -796,7 +756,27 @@ export default function App() {
     }
   };
 
-  // Standard Quiz Runner Start
+  // Admin Login Handler
+  const handleAdminLoginSubmit = (e) => {
+    e.preventDefault();
+    if (adminUsernameInput.trim() === 'admin' && adminPasswordInput.trim() === 'family123') {
+      setIsParentAdmin(true);
+      setShowAdminLoginModal(false);
+      setAdminAuthError('');
+      setAdminUsernameInput('');
+      setAdminPasswordInput('');
+      setActiveTab('admin');
+    } else {
+      setAdminAuthError('ユーザー名またはパスワードが違います（初期設定: admin / family123）');
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setIsParentAdmin(false);
+    setActiveTab('home');
+  };
+
+  // Start Quiz
   const startQuiz = (subject) => {
     setSelectedSubject(subject);
     let questions = [];
@@ -818,11 +798,10 @@ export default function App() {
     setUserAnswers(new Array(questions.length).fill(null));
     setSelectedOption(null);
     setQuizStartTime(Date.now());
-    setQuizFinished(false);
     setActiveTab('quiz');
   };
 
-  // Daily Test Runner
+  // Start Daily AI Test
   const startDailyTest = async () => {
     setIsGeneratingAI(true);
     setSelectedSubject('daily');
@@ -834,7 +813,6 @@ export default function App() {
     setUserAnswers(new Array(questions.length).fill(null));
     setSelectedOption(null);
     setQuizStartTime(Date.now());
-    setQuizFinished(false);
     setIsGeneratingAI(false);
     setActiveTab('quiz');
   };
@@ -859,20 +837,10 @@ export default function App() {
   };
 
   const finishQuiz = async (finalAnswers) => {
-    setQuizFinished(true);
-    const durationSec = Math.round((Date.now() - quizStartTime) / 1000);
+    const durationSec = Math.round((Date.now() - (quizStartTime || Date.now())) / 1000);
 
     let correctCount = 0;
-    const categoryStats = {
-      "算数計算": { correct: 0, total: 0 },
-      "特殊算": { correct: 0, total: 0 },
-      "図形": { correct: 0, total: 0 },
-      "思考力": { correct: 0, total: 0 },
-      "国語漢字": { correct: 0, total: 0 },
-      "語彙文法": { correct: 0, total: 0 },
-      "読解力": { correct: 0, total: 0 },
-      "ウイグル語": { correct: 0, total: 0 }
-    };
+    const categoryStats = {};
 
     const answeredBreakdown = currentQuestions.map((q, idx) => {
       const uAns = finalAnswers[idx];
@@ -915,7 +883,6 @@ export default function App() {
       userEmail: user?.email || 'ゲスト'
     };
 
-    // Update local state and storage immediately
     setHistoryDocs(prev => {
       const updated = [recordData, ...(prev || [])];
       try {
@@ -926,7 +893,7 @@ export default function App() {
       return updated;
     });
 
-    if (user) {
+    if (user && !user.isAnonymous) {
       try {
         const resultsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'quiz_results');
         await addDoc(resultsRef, recordData);
@@ -992,6 +959,84 @@ export default function App() {
 
   const currentRank = getRankBadge(averageScore);
 
+  // Parent Analytics
+  const familyMemberAnalytics = useMemo(() => {
+    if (!historyDocs || historyDocs.length === 0) return [];
+
+    const memberMap = {};
+    historyDocs.forEach(item => {
+      const name = item.userDisplayName || '家族メンバー';
+      if (!memberMap[name]) {
+        memberMap[name] = {
+          name: name,
+          email: item.userEmail || '',
+          totalExams: 0,
+          totalScorePercent: 0,
+          lastExamDate: item.dateStr || '',
+          lastExamTimestamp: item.timestamp || 0,
+          records: []
+        };
+      }
+      memberMap[name].totalExams += 1;
+      memberMap[name].totalScorePercent += (item.percentage || 0);
+      memberMap[name].records.push(item);
+
+      if ((item.timestamp || 0) > memberMap[name].lastExamTimestamp) {
+        memberMap[name].lastExamTimestamp = item.timestamp;
+        memberMap[name].lastExamDate = item.dateStr;
+      }
+    });
+
+    return Object.values(memberMap).map(m => {
+      const avgScore = Math.round(m.totalScorePercent / m.totalExams);
+      const dates = Array.from(new Set(
+        m.records.map(r => {
+          if (!r.timestamp) return null;
+          const d = new Date(r.timestamp);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }).filter(Boolean)
+      )).sort().reverse();
+
+      const testedToday = dates.includes(todayStr);
+
+      let streak = 0;
+      let checkDate = new Date();
+      if (!testedToday) checkDate.setDate(checkDate.getDate() - 1);
+
+      while (true) {
+        const dStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+        if (dates.includes(dStr)) {
+          streak++;
+          checkDate.setDate(checkDate.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+
+      return {
+        ...m,
+        avgScore: avgScore,
+        rankTitle: getRankBadge(avgScore).title,
+        rankColor: getRankBadge(avgScore).color,
+        testedToday: testedToday,
+        streak: streak,
+        dates: dates
+      };
+    });
+  }, [historyDocs, todayStr]);
+
+  const past14Days = useMemo(() => {
+    const list = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const label = `${d.getMonth() + 1}/${d.getDate()}`;
+      list.push({ dStr, label });
+    }
+    return list;
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col">
       
@@ -1007,11 +1052,11 @@ export default function App() {
             </div>
             <div>
               <h1 className="font-black text-sm sm:text-base leading-tight">四谷大塚 入塾テスト対策</h1>
-              <p className="text-[10px] text-amber-300 font-medium">ご家族学習・多言語＆学年対応モデル</p>
+              <p className="text-[10px] text-amber-300 font-medium">ご家族学習・保護者管理ダッシュボード対応</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => setActiveTab('home')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
@@ -1032,7 +1077,25 @@ export default function App() {
               <span>成績・分析</span>
             </button>
 
-            {/* Google Auth Button */}
+            {/* Parent Admin Button */}
+            <button
+              onClick={() => {
+                if (isParentAdmin) setActiveTab('admin');
+                else setShowAdminLoginModal(true);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition flex items-center gap-1.5 border ${
+                activeTab === 'admin'
+                  ? 'bg-amber-400 text-slate-950 border-amber-300 shadow'
+                  : isParentAdmin
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-400/40 hover:bg-amber-500/30'
+                  : 'bg-slate-800 text-amber-300 border-slate-700 hover:bg-slate-700'
+              }`}
+            >
+              {isParentAdmin ? <ShieldCheck className="w-3.5 h-3.5 text-amber-400" /> : <Lock className="w-3.5 h-3.5 text-amber-400" />}
+              <span>{isParentAdmin ? '保護者管理画面' : '🔒 保護者管理'}</span>
+            </button>
+
+            {/* Auth User Info */}
             {user && !user.isAnonymous ? (
               <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
                 {userProfile.avatar ? (
@@ -1054,17 +1117,87 @@ export default function App() {
               <button
                 onClick={handleGoogleSignIn}
                 disabled={isLoggingIn}
-                className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5 shadow"
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-2.5 py-1.5 rounded-lg text-xs transition flex items-center gap-1 border border-slate-700"
               >
                 <LogIn className="w-3.5 h-3.5" />
-                <span>Googleで保存</span>
+                <span>Google連携</span>
               </button>
             )}
           </div>
         </div>
       </header>
 
-      {/* Auth Error Toast if any */}
+      {/* Admin Login Modal */}
+      {showAdminLoginModal && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mb-4 font-black">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-xl font-extrabold text-slate-900 mb-1">保護者管理ログイン</h3>
+            <p className="text-xs text-slate-500 mb-6">
+              ご家族の毎日のテスト習慣化状況や成績の伸びを確認できます。
+            </p>
+
+            <form onSubmit={handleAdminLoginSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">ユーザー名</label>
+                <input
+                  type="text"
+                  value={adminUsernameInput}
+                  onChange={(e) => setAdminUsernameInput(e.target.value)}
+                  placeholder="admin"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">パスワード</label>
+                <input
+                  type="password"
+                  value={adminPasswordInput}
+                  onChange={(e) => setAdminPasswordInput(e.target.value)}
+                  placeholder="family123"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                  required
+                />
+              </div>
+
+              {adminAuthError && (
+                <div className="text-xs text-rose-600 font-bold bg-rose-50 p-2.5 rounded-lg border border-rose-200">
+                  {adminAuthError}
+                </div>
+              )}
+
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px] text-slate-600">
+                💡 初期ログイン情報:<br />
+                ・ユーザー名: <code className="font-mono bg-white px-1 rounded border">admin</code><br />
+                ・パスワード: <code className="font-mono bg-white px-1 rounded border">family123</code>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAdminLoginModal(false)}
+                  className="w-1/2 py-2.5 rounded-xl border border-slate-300 font-bold text-xs text-slate-600 hover:bg-slate-100 transition"
+                >
+                  キャンセル
+                </button>
+                <button
+                  type="submit"
+                  className="w-1/2 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold text-xs text-white shadow transition"
+                >
+                  ログイン
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Auth Notification / Fallback Toast */}
       {authError && (
         <div className="bg-amber-50 border-b border-amber-200 text-amber-900 text-xs p-3 text-center flex items-center justify-center gap-2 flex-wrap">
           <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
@@ -1086,7 +1219,7 @@ export default function App() {
         {activeTab === 'home' && (
           <div className="space-y-6">
             
-            {/* GRADE SELECTION BAR */}
+            {/* Grade Selector */}
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-2">
                 <User className="w-5 h-5 text-indigo-600" />
@@ -1660,12 +1793,227 @@ export default function App() {
           </div>
         )}
 
+        {/* TAB 5: PARENT ADMIN DASHBOARD */}
+        {activeTab === 'admin' && isParentAdmin && (
+          <div className="space-y-6">
+            
+            {/* Admin Header */}
+            <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-xl flex items-center justify-between flex-wrap gap-4 border border-indigo-800">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-2 bg-amber-400 text-slate-950 px-3 py-1 rounded-full text-xs font-black">
+                  <ShieldCheck className="w-4 h-4" />
+                  保護者専用管理モード
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-black">
+                  ご家族の学習進捗＆習慣化ダッシュボード
+                </h2>
+                <p className="text-xs sm:text-sm text-indigo-200">
+                  毎日のテスト実施状況・連続クリア日数・成績の成長グラフをまとめて確認できます。
+                </p>
+              </div>
+
+              <button
+                onClick={handleAdminLogout}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-4 py-2 rounded-xl text-xs transition flex items-center gap-2 border border-slate-700"
+              >
+                <Unlock className="w-4 h-4 text-amber-400" />
+                <span>管理モードを終了</span>
+              </button>
+            </div>
+
+            {/* Overview Stats Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs font-bold">本日のテスト完了人数</span>
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                </div>
+                <div className="text-2xl font-black text-slate-900">
+                  {familyMemberAnalytics.filter(m => m.testedToday).length} <span className="text-xs font-normal text-slate-500">/ {familyMemberAnalytics.length || 1} 人</span>
+                </div>
+                <div className="text-[11px] text-emerald-600 font-semibold mt-1">
+                  毎日1回の習慣化継続中
+                </div>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs font-bold">最高連続日数 (Streak)</span>
+                  <Flame className="w-5 h-5 text-amber-500" />
+                </div>
+                <div className="text-2xl font-black text-amber-600">
+                  {Math.max(...familyMemberAnalytics.map(m => m.streak), 0)} <span className="text-xs font-normal text-slate-500">日連続</span>
+                </div>
+                <div className="text-[11px] text-amber-600 font-semibold mt-1">
+                  モチベーション維持良好
+                </div>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs font-bold">家族累計テスト受検回数</span>
+                  <Trophy className="w-5 h-5 text-indigo-500" />
+                </div>
+                <div className="text-2xl font-black text-slate-900">
+                  {historyDocs.length} <span className="text-xs font-normal text-slate-500">回</span>
+                </div>
+                <div className="text-[11px] text-indigo-600 font-semibold mt-1">
+                  テスト解き直し含む総数
+                </div>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs font-bold">家族平均正答率</span>
+                  <TrendingUp className="w-5 h-5 text-indigo-500" />
+                </div>
+                <div className="text-2xl font-black text-indigo-600">
+                  {averageScore}%
+                </div>
+                <div className="text-[11px] text-slate-500 font-semibold mt-1">
+                  四谷大塚 クラス判定目安: {currentRank.title}
+                </div>
+              </div>
+            </div>
+
+            {/* Member Progress Cards */}
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 border-b border-slate-100 pb-3">
+                <Users className="w-5 h-5 text-indigo-600" />
+                お子様ごとの進捗＆習慣化チェック
+              </h3>
+
+              {familyMemberAnalytics.length === 0 ? (
+                <div className="text-center py-8 text-xs text-slate-400">
+                  まだテストデータがありません。お子様がテストを受けると、自動的にここに進捗が表示されます。
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {familyMemberAnalytics.map((member, idx) => (
+                    <div key={idx} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-amber-400 text-slate-900 font-bold flex items-center justify-center text-xs">
+                            {member.name.charAt(0)}
+                          </div>
+                          <div>
+                            <div className="font-extrabold text-sm text-slate-900">{member.name}</div>
+                            <div className="text-[10px] text-slate-400">最終受検: {member.lastExamDate}</div>
+                          </div>
+                        </div>
+
+                        <div className={`px-2.5 py-1 rounded-lg text-xs font-bold ${member.rankColor}`}>
+                          {member.rankTitle}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 text-center bg-white p-2.5 rounded-lg border border-slate-200 text-xs">
+                        <div>
+                          <div className="text-[10px] text-slate-400">本日のテスト</div>
+                          <div className={`font-black mt-0.5 ${member.testedToday ? 'text-emerald-600' : 'text-slate-400'}`}>
+                            {member.testedToday ? '完了 ✓' : '未完了'}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] text-slate-400">連続日数</div>
+                          <div className="font-black text-amber-600 mt-0.5">
+                            🔥 {member.streak} 日
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] text-slate-400">平均点</div>
+                          <div className="font-black text-indigo-600 mt-0.5">
+                            {member.avgScore}%
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Past 14-Days Habit Tracker Calendar */}
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 overflow-x-auto">
+              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-indigo-600" />
+                直近14日間の「毎日1回テスト」実施状況カレンダー
+              </h3>
+
+              {familyMemberAnalytics.length === 0 ? (
+                <div className="text-center py-4 text-xs text-slate-400">データなし</div>
+              ) : (
+                <div className="min-w-[600px]">
+                  <div className="grid grid-cols-[140px_repeat(14,1fr)] gap-1 text-center text-[10px] font-bold text-slate-500 border-b border-slate-100 pb-2 mb-2">
+                    <div className="text-left pl-2">生徒名</div>
+                    {past14Days.map((day, i) => (
+                      <div key={i} className={day.dStr === todayStr ? 'text-amber-600 font-black' : ''}>
+                        {day.label}
+                      </div>
+                    ))}
+                  </div>
+
+                  {familyMemberAnalytics.map((member, mIdx) => (
+                    <div key={mIdx} className="grid grid-cols-[140px_repeat(14,1fr)] gap-1 text-center items-center py-2 border-b border-slate-50 text-xs">
+                      <div className="font-bold text-left pl-2 text-slate-800 truncate">{member.name}</div>
+                      {past14Days.map((day, dIdx) => {
+                        const isDone = member.dates.includes(day.dStr);
+                        return (
+                          <div key={dIdx} className="flex justify-center">
+                            {isDone ? (
+                              <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-[10px]">
+                                ✓
+                              </span>
+                            ) : (
+                              <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-300 flex items-center justify-center text-[10px]">
+                                ・
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Score Growth Chart */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-indigo-600" />
+                全体の成績伸び率（過去の全テスト推移）
+              </h3>
+              <div className="w-full h-64">
+                {scoreTrendData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={scoreTrendData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} />
+                      <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#64748b' }} />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="score" stroke="#4f46e5" strokeWidth={3} dot={{ r: 5, fill: '#4f46e5' }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                    データなし
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </div>
+        )}
+
       </main>
 
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 text-xs py-6 border-t border-slate-800 text-center">
         <div className="max-w-6xl mx-auto px-4">
-          四谷大塚 入塾テスト実戦対策・学習実績保存システム (ご家族運用・多言語＆学年対応)
+          四谷大塚 入塾テスト実戦対策・学習実績保存システム (ご家族運用・保護者管理機能搭載)
         </div>
       </footer>
     </div>
