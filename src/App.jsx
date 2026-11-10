@@ -5,6 +5,8 @@ import {
   signInAnonymously,
   signInWithCustomToken,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged
@@ -20,7 +22,7 @@ import {
 } from 'recharts';
 import {
   Trophy, BookOpen, Calculator, CheckCircle2, User, LogIn, LogOut, BarChart2, ChevronRight, Sparkles, BrainCircuit, Check, AlertCircle, History, ArrowRight, Calendar, Flame, RefreshCw, Zap,
-  ShieldCheck, Lock, Unlock, Users, TrendingUp
+  ShieldCheck, Lock, Unlock, Users, TrendingUp, Filter, CalendarDays
 } from 'lucide-react';
 
 // ==========================================
@@ -53,7 +55,6 @@ const getTodayDateString = () => {
 // Base Question Datasets (Grade 2 & Grade 5)
 // ==========================================
 
-// --- GRADE 2 QUESTIONS ---
 const MATH_QUESTIONS_G2 = [
   {
     id: "m2_1",
@@ -240,7 +241,6 @@ const JAPANESE_QUESTIONS_G2 = [
   }
 ];
 
-// --- GRADE 5 QUESTIONS ---
 const MATH_QUESTIONS_G5 = [
   {
     id: "m_1",
@@ -432,7 +432,6 @@ const JAPANESE_QUESTIONS_G5 = [
   }
 ];
 
-// --- UYGHUR LANGUAGE QUESTIONS ---
 const UYGHUR_QUESTIONS = [
   {
     id: "u_1",
@@ -526,7 +525,7 @@ const UYGHUR_QUESTIONS = [
   }
 ];
 
-// Helper: Shuffle Array (Fisher-Yates)
+// Helper: Shuffle Array
 const shuffleArray = (array) => {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
@@ -536,20 +535,18 @@ const shuffleArray = (array) => {
   return arr;
 };
 
-// Daily Dynamic Fallback Generator (Generates new numerical variations every day)
+// Daily Dynamic Questions Generator
 const generateDailyDynamicQuestions = (grade) => {
   const today = new Date();
   const dateSeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
   
-  // Pseudo-random based on date seed
   const seededRand = (offset) => {
     const x = Math.sin(dateSeed + offset) * 10000;
     return x - Math.floor(x);
   };
 
   if (grade === 'grade2') {
-    // Grade 2 Dynamic Variations
-    const a1 = Math.floor(seededRand(1) * 15) + 15; // e.g. 18 ~ 30
+    const a1 = Math.floor(seededRand(1) * 15) + 15;
     const b1 = Math.floor(seededRand(2) * 10) + 10;
     const c1 = 50 - a1;
     const ans1 = 50 + b1;
@@ -569,14 +566,13 @@ const generateDailyDynamicQuestions = (grade) => {
 
     return shuffleArray([...dynamicMathG2, ...JAPANESE_QUESTIONS_G2]);
   } else {
-    // Grade 5 Dynamic Variations
-    const multX = (Math.floor(seededRand(1) * 20) + 12) * 3; // e.g. 45
-    const numY1 = Math.floor(seededRand(2) * 30) + 25; // e.g. 35
+    const multX = (Math.floor(seededRand(1) * 20) + 12) * 3;
+    const numY1 = Math.floor(seededRand(2) * 30) + 25;
     const numY2 = 100 - numY1;
     const multAns = multX * 100;
 
-    const interval = (Math.floor(seededRand(3) * 3) + 2) * 2; // e.g. 4, 6, 8
-    const count = Math.floor(seededRand(4) * 8) + 10; // e.g. 12
+    const interval = (Math.floor(seededRand(3) * 3) + 2) * 2;
+    const count = Math.floor(seededRand(4) * 8) + 10;
     const totalDist = interval * count;
     const treeAns = count + 1;
 
@@ -609,7 +605,6 @@ const generateDailyDynamicQuestions = (grade) => {
   }
 };
 
-// Daily Question Generator using Gemini API with Local Fallback
 const fetchAIDailyQuestions = async (subject = 'combined', grade = 'grade2') => {
   const gradeLabel = grade === 'grade2' ? '小学2年生' : '小学5年生';
   
@@ -667,7 +662,6 @@ ${gradeLabel}対象の四谷大塚入塾テストレベルの選択肢付き問�
     console.warn("AI Question generation falling back to dynamic daily pool:", err);
   }
 
-  // Fallback Dynamic Generator (Generates fresh variation based on current date)
   return generateDailyDynamicQuestions(grade);
 };
 
@@ -678,17 +672,22 @@ export default function App() {
   const [authError, setAuthError] = useState(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Parent Admin Auth States (Fixed credentials: admin / family123)
+  // Parent Admin Auth States (admin / family123)
   const [isParentAdmin, setIsParentAdmin] = useState(false);
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
   const [adminUsernameInput, setAdminUsernameInput] = useState('');
   const [adminPasswordInput, setAdminPasswordInput] = useState('');
   const [adminAuthError, setAdminAuthError] = useState('');
 
-  // Navigation & Grade States (2年生 or 5年生)
+  // Selected Child Filter & Historical Time Filter in Admin/History Mode
+  const [adminSelectedChildName, setAdminSelectedChildName] = useState('ALL');
+  const [historyPeriodFilter, setHistoryPeriodFilter] = useState('ALL'); // 'ALL', 'THIS_MONTH', 'LAST_MONTH', 'LAST_30', 'CUSTOM_DATE'
+  const [customSearchDate, setCustomSearchDate] = useState('');
+
+  // Navigation & Grade States
   const [activeTab, setActiveTab] = useState('home'); // 'home', 'quiz', 'results', 'history', 'admin'
-  const [selectedSubject, setSelectedSubject] = useState('math'); // 'math', 'japanese', 'uyghur', 'combined', 'daily'
-  const [selectedGrade, setSelectedGrade] = useState('grade2'); // 'grade2', 'grade5'
+  const [selectedSubject, setSelectedSubject] = useState('math');
+  const [selectedGrade, setSelectedGrade] = useState('grade2');
   
   // Quiz Runner States
   const [currentQuestions, setCurrentQuestions] = useState([]);
@@ -697,7 +696,7 @@ export default function App() {
   const [quizStartTime, setQuizStartTime] = useState(null);
   const [selectedOption, setSelectedOption] = useState(null);
 
-  // History & Storage
+  // Unified Family History Docs
   const [historyDocs, setHistoryDocs] = useState([]);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
 
@@ -705,10 +704,10 @@ export default function App() {
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const todayStr = getTodayDateString();
 
-  // Initialize Local Storage Fallback
+  // Load Local Backup
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('learn_daily_quiz_history');
+      const saved = localStorage.getItem('learn_daily_family_history');
       if (saved) {
         setHistoryDocs(JSON.parse(saved));
       }
@@ -723,6 +722,7 @@ export default function App() {
 
     const dates = Array.from(new Set(
       historyDocs.map(item => {
+        if (item.dateIso) return item.dateIso;
         if (!item.timestamp) return null;
         const d = new Date(item.timestamp);
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -780,31 +780,30 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Sync Firestore History
+  // Sync Shared Family Results from Firestore
   useEffect(() => {
-    if (!user || user.isAnonymous) return;
-
     try {
-      const resultsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'quiz_results');
+      const familyResultsRef = collection(db, 'artifacts', appId, 'family_results');
       const unsubscribe = onSnapshot(
-        resultsRef,
+        familyResultsRef,
         (snapshot) => {
           const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-          setHistoryDocs(items);
-          localStorage.setItem('learn_daily_quiz_history', JSON.stringify(items));
+          if (items.length > 0) {
+            setHistoryDocs(items);
+            localStorage.setItem('learn_daily_family_history', JSON.stringify(items));
+          }
         },
         (error) => {
-          console.warn("Firestore listener error:", error);
+          console.warn("Firestore family results listener error:", error);
         }
       );
       return () => unsubscribe();
     } catch (e) {
       console.warn("Firestore subscription error:", e);
     }
-  }, [user]);
+  }, []);
 
-  // Google Login Handler
   const handleGoogleSignIn = async () => {
     setIsLoggingIn(true);
     setAuthError(null);
@@ -813,7 +812,7 @@ export default function App() {
       await signInWithPopup(auth, provider);
     } catch (err) {
       console.error("Login failed:", err);
-      setAuthError("Googleログインに失敗しました。名前を直接登録してデータ保存することも可能です。");
+      setAuthError("Googleログインに失敗しました。下のボタンからお名前を直接入力して保存できます。");
     } finally {
       setIsLoggingIn(false);
     }
@@ -836,7 +835,6 @@ export default function App() {
     }
   };
 
-  // Admin Login Handler
   const handleAdminLoginSubmit = (e) => {
     e.preventDefault();
     if (adminUsernameInput.trim() === 'admin' && adminPasswordInput.trim() === 'family123') {
@@ -856,7 +854,6 @@ export default function App() {
     setActiveTab('home');
   };
 
-  // Start Quiz
   const startQuiz = (subject) => {
     setSelectedSubject(subject);
     let questions = [];
@@ -881,7 +878,6 @@ export default function App() {
     setActiveTab('quiz');
   };
 
-  // Start Daily AI Test
   const startDailyTest = async () => {
     setIsGeneratingAI(true);
     setSelectedSubject('daily');
@@ -918,6 +914,8 @@ export default function App() {
 
   const finishQuiz = async (finalAnswers) => {
     const durationSec = Math.round((Date.now() - (quizStartTime || Date.now())) / 1000);
+    const now = new Date();
+    const dateIsoStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     let correctCount = 0;
     const categoryStats = {};
@@ -949,7 +947,11 @@ export default function App() {
 
     const recordData = {
       timestamp: Date.now(),
-      dateStr: new Date().toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      dateIso: dateIsoStr,
+      year: now.getFullYear(),
+      month: now.getMonth() + 1,
+      day: now.getDate(),
+      dateStr: now.toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
       subject: selectedSubject,
       grade: selectedGrade,
       gradeLabel: selectedGrade === 'grade2' ? '小学2年生' : '小学5年生',
@@ -963,71 +965,115 @@ export default function App() {
       userEmail: user?.email || 'ゲスト'
     };
 
-    setHistoryDocs(prev => {
-      const updated = [recordData, ...(prev || [])];
-      try {
-        localStorage.setItem('learn_daily_quiz_history', JSON.stringify(updated));
-      } catch (e) {
-        console.warn("Failed to write to localStorage:", e);
-      }
-      return updated;
-    });
-
-    if (user && !user.isAnonymous) {
-      try {
-        const resultsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'quiz_results');
-        await addDoc(resultsRef, recordData);
-      } catch (e) {
-        console.warn("Failed to save result to Firestore:", e);
-      }
+    // Save to Firestore shared family results
+    try {
+      const familyResultsRef = collection(db, 'artifacts', appId, 'family_results');
+      await addDoc(familyResultsRef, recordData);
+    } catch (e) {
+      console.warn("Could not save to Firestore, falling back to local storage:", e);
     }
 
-    setActiveTab('results');
+    // Save to Local Storage Backup
+    try {
+      const newHistory = [recordData, ...historyDocs];
+      setHistoryDocs(newHistory);
+      localStorage.setItem('learn_daily_family_history', JSON.stringify(newHistory));
+    } catch (e) {
+      console.warn("Could not save to localStorage:", e);
+    }
+
     setSelectedHistoryItem(recordData);
+    setActiveTab('results');
   };
 
-  // Analytics Data
-  const radarData = useMemo(() => {
-    if (!historyDocs || historyDocs.length === 0) {
-      return [
-        { subject: '算数計算', score: 80 },
-        { subject: '特殊算', score: 70 },
-        { subject: '図形', score: 75 },
-        { subject: '国語漢字', score: 85 },
-        { subject: '語彙文法', score: 65 },
-        { subject: '読解力', score: 90 },
-        { subject: 'ウイグル語', score: 80 }
-      ];
+  // Filtered dataset for History and Admin view (by Child & Date/Period)
+  const filteredHistoryDocs = useMemo(() => {
+    let list = [...historyDocs];
+
+    // Child name filter
+    if (adminSelectedChildName !== 'ALL') {
+      list = list.filter(item => item.userDisplayName === adminSelectedChildName);
     }
 
+    // Period / Date filter
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    if (historyPeriodFilter === 'THIS_MONTH') {
+      list = list.filter(item => item.year === currentYear && item.month === currentMonth);
+    } else if (historyPeriodFilter === 'LAST_MONTH') {
+      const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+      const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+      list = list.filter(item => item.year === lastMonthYear && item.month === lastMonth);
+    } else if (historyPeriodFilter === 'LAST_30') {
+      const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      list = list.filter(item => (item.timestamp || 0) >= thirtyDaysAgo);
+    } else if (historyPeriodFilter === 'CUSTOM_DATE' && customSearchDate) {
+      list = list.filter(item => item.dateIso === customSearchDate);
+    }
+
+    return list;
+  }, [historyDocs, adminSelectedChildName, historyPeriodFilter, customSearchDate]);
+
+  // Extract unique child names
+  const childNamesList = useMemo(() => {
+    const names = new Set(historyDocs.map(d => d.userDisplayName).filter(Boolean));
+    return Array.from(names);
+  }, [historyDocs]);
+
+  // 30-Day Habit Calendar Data
+  const calendar30Days = useMemo(() => {
+    const days = [];
+    const testedDates = new Set(filteredHistoryDocs.map(item => item.dateIso));
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      days.push({
+        iso: iso,
+        dayNum: d.getDate(),
+        monthNum: d.getMonth() + 1,
+        isTested: testedDates.has(iso)
+      });
+    }
+    return days;
+  }, [filteredHistoryDocs]);
+
+  // Radar Chart Data for Filtered Selection
+  const radarData = useMemo(() => {
     const totals = {};
-    historyDocs.forEach(docItem => {
-      if (!docItem?.categoryStats) return;
-      Object.entries(docItem.categoryStats).forEach(([cat, val]) => {
+    filteredHistoryDocs.forEach(doc => {
+      if (!doc.categoryStats) return;
+      Object.entries(doc.categoryStats).forEach(([cat, val]) => {
         if (!totals[cat]) totals[cat] = { correct: 0, total: 0 };
-        totals[cat].correct += val.correct || 0;
-        totals[cat].total += val.total || 0;
+        totals[cat].correct += val.correct;
+        totals[cat].total += val.total;
       });
     });
 
-    return Object.entries(totals).map(([cat, val]) => ({
+    const categories = ['算数計算', '特殊算', '図形', '思考力', '国語漢字', '語彙文法', '読解力', 'ウイグル語'];
+    return categories.map(cat => ({
       subject: cat,
-      score: val.total > 0 ? Math.round((val.correct / val.total) * 100) : 0
+      score: totals[cat] && totals[cat].total > 0
+        ? Math.round((totals[cat].correct / totals[cat].total) * 100)
+        : 75
     }));
-  }, [historyDocs]);
+  }, [filteredHistoryDocs]);
 
+  // Score Trend Data for Filtered Selection
   const scoreTrendData = useMemo(() => {
-    return [...(historyDocs || [])]
+    return [...filteredHistoryDocs]
       .reverse()
-      .map((item) => ({
+      .map(item => ({
         date: item.dateStr || '前',
-        score: item.percentage || 0
+        score: item.percentage
       }));
-  }, [historyDocs]);
+  }, [filteredHistoryDocs]);
 
-  const totalExamsTaken = historyDocs ? historyDocs.length : 0;
-  const averageScore = totalExamsTaken > 0 
-    ? Math.round(historyDocs.reduce((acc, curr) => acc + (curr.percentage || 0), 0) / totalExamsTaken)
+  const totalExamsTaken = filteredHistoryDocs.length;
+  const averageScore = totalExamsTaken > 0
+    ? Math.round(filteredHistoryDocs.reduce((acc, curr) => acc + curr.percentage, 0) / totalExamsTaken)
     : 0;
 
   const getRankBadge = (avg) => {
@@ -1038,84 +1084,6 @@ export default function App() {
   };
 
   const currentRank = getRankBadge(averageScore);
-
-  // Parent Analytics
-  const familyMemberAnalytics = useMemo(() => {
-    if (!historyDocs || historyDocs.length === 0) return [];
-
-    const memberMap = {};
-    historyDocs.forEach(item => {
-      const name = item.userDisplayName || '家族メンバー';
-      if (!memberMap[name]) {
-        memberMap[name] = {
-          name: name,
-          email: item.userEmail || '',
-          totalExams: 0,
-          totalScorePercent: 0,
-          lastExamDate: item.dateStr || '',
-          lastExamTimestamp: item.timestamp || 0,
-          records: []
-        };
-      }
-      memberMap[name].totalExams += 1;
-      memberMap[name].totalScorePercent += (item.percentage || 0);
-      memberMap[name].records.push(item);
-
-      if ((item.timestamp || 0) > memberMap[name].lastExamTimestamp) {
-        memberMap[name].lastExamTimestamp = item.timestamp;
-        memberMap[name].lastExamDate = item.dateStr;
-      }
-    });
-
-    return Object.values(memberMap).map(m => {
-      const avgScore = Math.round(m.totalScorePercent / m.totalExams);
-      const dates = Array.from(new Set(
-        m.records.map(r => {
-          if (!r.timestamp) return null;
-          const d = new Date(r.timestamp);
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        }).filter(Boolean)
-      )).sort().reverse();
-
-      const testedToday = dates.includes(todayStr);
-
-      let streak = 0;
-      let checkDate = new Date();
-      if (!testedToday) checkDate.setDate(checkDate.getDate() - 1);
-
-      while (true) {
-        const dStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
-        if (dates.includes(dStr)) {
-          streak++;
-          checkDate.setDate(checkDate.getDate() - 1);
-        } else {
-          break;
-        }
-      }
-
-      return {
-        ...m,
-        avgScore: avgScore,
-        rankTitle: getRankBadge(avgScore).title,
-        rankColor: getRankBadge(avgScore).color,
-        testedToday: testedToday,
-        streak: streak,
-        dates: dates
-      };
-    });
-  }, [historyDocs, todayStr]);
-
-  const past14Days = useMemo(() => {
-    const list = [];
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const label = `${d.getMonth() + 1}/${d.getDate()}`;
-      list.push({ dStr, label });
-    }
-    return list;
-  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col">
@@ -1132,7 +1100,7 @@ export default function App() {
             </div>
             <div>
               <h1 className="font-black text-sm sm:text-base leading-tight">四谷大塚 入塾テスト対策</h1>
-              <p className="text-[10px] text-amber-300 font-medium">ご家族学習・保護者管理ダッシュボード対応</p>
+              <p className="text-[10px] text-amber-300 font-medium">ご家族学習・多言語＆学年対応モデル</p>
             </div>
           </div>
 
@@ -1157,7 +1125,7 @@ export default function App() {
               <span>成績・分析</span>
             </button>
 
-            {/* Parent Admin Button */}
+            {/* Parent Admin Access Button */}
             <button
               onClick={() => {
                 if (isParentAdmin) setActiveTab('admin');
@@ -1165,17 +1133,15 @@ export default function App() {
               }}
               className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition flex items-center gap-1.5 border ${
                 activeTab === 'admin'
-                  ? 'bg-amber-400 text-slate-950 border-amber-300 shadow'
-                  : isParentAdmin
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-400/40 hover:bg-amber-500/30'
-                  : 'bg-slate-800 text-amber-300 border-slate-700 hover:bg-slate-700'
+                  ? 'bg-amber-400 text-slate-950 border-amber-300'
+                  : 'bg-slate-800 text-amber-300 border-amber-400/40 hover:bg-slate-700'
               }`}
             >
-              {isParentAdmin ? <ShieldCheck className="w-3.5 h-3.5 text-amber-400" /> : <Lock className="w-3.5 h-3.5 text-amber-400" />}
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
               <span>{isParentAdmin ? '保護者管理画面' : '🔒 保護者管理'}</span>
             </button>
 
-            {/* Auth User Info */}
+            {/* Profile / Google Auth Button */}
             {user && !user.isAnonymous ? (
               <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
                 {userProfile.avatar ? (
@@ -1195,79 +1161,81 @@ export default function App() {
               </div>
             ) : (
               <button
-                onClick={handleGoogleSignIn}
-                disabled={isLoggingIn}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-2.5 py-1.5 rounded-lg text-xs transition flex items-center gap-1 border border-slate-700"
+                onClick={handleSetLocalProfileName}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold px-2.5 py-1.5 rounded-lg text-xs transition flex items-center gap-1"
               >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>Google連携</span>
+                <User className="w-3.5 h-3.5 text-amber-400" />
+                <span>{userProfile.name}</span>
               </button>
             )}
           </div>
         </div>
       </header>
 
-      {/* Admin Login Modal */}
+      {/* Auth Error Toast if any */}
+      {authError && (
+        <div className="bg-rose-100 border border-rose-300 text-rose-800 text-xs p-3 text-center flex items-center justify-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-600" />
+          <span>{authError}</span>
+          <button onClick={handleSetLocalProfileName} className="underline font-bold bg-rose-200 px-2 py-0.5 rounded">
+            名前を入力して保存
+          </button>
+          <button onClick={() => setAuthError(null)} className="ml-2 font-bold text-slate-500">✕</button>
+        </div>
+      )}
+
+      {/* Parent Admin Login Modal */}
       {showAdminLoginModal && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative">
-            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mb-4 font-black">
-              <ShieldCheck className="w-6 h-6" />
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mb-4 font-black">
+              <Lock className="w-6 h-6" />
             </div>
-
-            <h3 className="text-xl font-extrabold text-slate-900 mb-1">保護者管理ログイン</h3>
+            <h3 className="text-xl font-black text-slate-900 mb-1">保護者専用管理ログイン</h3>
             <p className="text-xs text-slate-500 mb-6">
-              ご家族の毎日のテスト習慣化状況や成績の伸びを確認できます。
+              固定のユーザー名とパスワードを入力して保護者ダッシュボードへ入ります。
             </p>
 
             <form onSubmit={handleAdminLoginSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">ユーザー名</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">ユーザー名 (初期設定: admin)</label>
                 <input
                   type="text"
                   value={adminUsernameInput}
                   onChange={(e) => setAdminUsernameInput(e.target.value)}
                   placeholder="admin"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                  required
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-amber-500 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">パスワード</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">パスワード (初期設定: family123)</label>
                 <input
                   type="password"
                   value={adminPasswordInput}
                   onChange={(e) => setAdminPasswordInput(e.target.value)}
-                  placeholder="family123"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                  required
+                  placeholder="••••••••"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-amber-500 outline-none"
                 />
               </div>
 
               {adminAuthError && (
-                <div className="text-xs text-rose-600 font-bold bg-rose-50 p-2.5 rounded-lg border border-rose-200">
+                <div className="text-xs text-rose-600 font-bold bg-rose-50 p-2.5 rounded-xl border border-rose-200">
                   {adminAuthError}
                 </div>
               )}
 
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px] text-slate-600">
-                💡 初期ログイン情報:<br />
-                ・ユーザー名: <code className="font-mono bg-white px-1 rounded border">admin</code><br />
-                ・パスワード: <code className="font-mono bg-white px-1 rounded border">family123</code>
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
+              <div className="flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowAdminLoginModal(false)}
-                  className="w-1/2 py-2.5 rounded-xl border border-slate-300 font-bold text-xs text-slate-600 hover:bg-slate-100 transition"
+                  className="w-1/2 py-2.5 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 transition"
                 >
                   キャンセル
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold text-xs text-white shadow transition"
+                  className="w-1/2 py-2.5 rounded-xl font-extrabold text-xs bg-amber-400 hover:bg-amber-300 text-slate-950 shadow transition"
                 >
                   ログイン
                 </button>
@@ -1277,29 +1245,14 @@ export default function App() {
         </div>
       )}
 
-      {/* Auth Notification / Fallback Toast */}
-      {authError && (
-        <div className="bg-amber-50 border-b border-amber-200 text-amber-900 text-xs p-3 text-center flex items-center justify-center gap-2 flex-wrap">
-          <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-          <span>{authError}</span>
-          <button 
-            onClick={handleSetLocalProfileName}
-            className="bg-amber-600 text-white font-bold px-2 py-0.5 rounded text-[11px] hover:bg-amber-700 ml-1"
-          >
-            名前だけ登録して保存
-          </button>
-          <button onClick={() => setAuthError(null)} className="underline ml-2 font-bold text-slate-500">閉じる</button>
-        </div>
-      )}
-
       {/* ================= MAIN CONTENT AREA ================= */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6">
         
-        {/* TAB 1: HOME */}
+        {/* TAB 1: HOME (GRADE SELECTOR & TEST SELECTION) */}
         {activeTab === 'home' && (
           <div className="space-y-6">
             
-            {/* Grade Selector (2年生 or 5年生) */}
+            {/* GRADE SELECTION BAR */}
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-2">
                 <User className="w-5 h-5 text-indigo-600" />
@@ -1310,26 +1263,26 @@ export default function App() {
                   onClick={() => setSelectedGrade('grade2')}
                   className={`px-5 py-2.5 rounded-xl text-xs font-black transition ${
                     selectedGrade === 'grade2'
-                      ? 'bg-amber-400 text-slate-950 shadow-md scale-105'
+                      ? 'bg-amber-400 text-slate-950 shadow-sm ring-2 ring-amber-300'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  🌱 小学2年生（弟さん・妹さん用）
+                  🌱 小学2年生（低学年向け）
                 </button>
                 <button
                   onClick={() => setSelectedGrade('grade5')}
                   className={`px-5 py-2.5 rounded-xl text-xs font-black transition ${
                     selectedGrade === 'grade5'
-                      ? 'bg-indigo-600 text-white shadow-md scale-105'
+                      ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-300'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  🚀 小学5年生（お兄ちゃん用）
+                  🚀 小学5年生（高学年向け）
                 </button>
               </div>
             </div>
 
-            {/* HERO BANNER */}
+            {/* DAILY STREAK & TODAY'S TEST HERO BANNER */}
             <div className="bg-gradient-to-br from-amber-500 via-orange-500 to-indigo-700 text-white rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
               <div className="absolute right-0 top-0 opacity-15 pointer-events-none transform translate-x-10 -translate-y-6">
                 <Flame className="w-80 h-80" />
@@ -1347,7 +1300,7 @@ export default function App() {
                   </h2>
 
                   <p className="text-amber-100 text-xs sm:text-sm leading-relaxed">
-                    Gemini AIが{selectedGrade === 'grade2' ? '小学2年生向け' : '小学5年生向け'}の入塾テスト問題を自動生成します。1日20問チャレンジして合格レベルの思考力を身につけましょう！
+                    AIが日付に合わせた日替わり問題（算数10問・国語10問）を自動生成します。毎日解くことで思考力が身につきます！
                   </p>
 
                   <div className="flex items-center gap-4 pt-2">
@@ -1394,7 +1347,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* TEST CARDS */}
+            {/* Test Selection Cards */}
             <div>
               <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-indigo-600" />
@@ -1403,7 +1356,7 @@ export default function App() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
                 
-                {/* Math Test Card */}
+                {/* Math Test */}
                 <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between group">
                   <div>
                     <div className="flex justify-between items-start mb-3">
@@ -1432,7 +1385,7 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Japanese Test Card */}
+                {/* Japanese Test */}
                 <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between group">
                   <div>
                     <div className="flex justify-between items-start mb-3">
@@ -1461,7 +1414,7 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Uyghur Test Card */}
+                {/* Uyghur Test */}
                 <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between group">
                   <div>
                     <div className="flex justify-between items-start mb-3">
@@ -1488,7 +1441,7 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Combined Test Card */}
+                {/* Combined Test */}
                 <div className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white rounded-2xl p-5 shadow-md flex flex-col justify-between group relative overflow-hidden border border-indigo-700">
                   <div className="absolute -right-4 -bottom-4 opacity-20 pointer-events-none">
                     <Trophy className="w-32 h-32" />
@@ -1521,33 +1474,11 @@ export default function App() {
               </div>
             </div>
 
-            {/* TIPS SECTION */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-              <h3 className="font-bold text-slate-800 text-base mb-3 flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-amber-500" />
-                ご家庭での継続学習・運用のコツ
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-slate-600">
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <div className="font-bold text-slate-900 mb-1 text-sm">1. 兄弟でプロファイルを活用</div>
-                  Googleアカウントでログインすれば、お子様ごとの成績グラフや連続テスト記録が自動で整理・保存されます。
-                </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <div className="font-bold text-slate-900 mb-1 text-sm">2. 毎日1回「本日の20問模試」</div>
-                  AIが毎日新しい問題を生成するので、飽きずに毎日チャレンジして習慣化できます。
-                </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <div className="font-bold text-slate-900 mb-1 text-sm">3. 弱点分野のピンポイント復習</div>
-                  「成績・分析」画面のレーダーチャートで、苦手な分野（植木算、指示語など）をひと目で把握できます。
-                </div>
-              </div>
-            </div>
-
           </div>
         )}
 
         {/* TAB 2: QUIZ RUNNER */}
-        {activeTab === 'quiz' && currentQuestions?.length > 0 && currentQuestions[currentIdx] && (
+        {activeTab === 'quiz' && currentQuestions.length > 0 && (
           <div className="max-w-2xl mx-auto space-y-6">
             
             {/* Quiz Top Progress */}
@@ -1571,15 +1502,15 @@ export default function App() {
             {/* Question Card */}
             <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-md">
               <div className="text-xs font-bold text-indigo-500 mb-2">
-                【{currentQuestions[currentIdx]?.category || '思考力'}】
+                【{currentQuestions[currentIdx].category}】
               </div>
               <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-relaxed whitespace-pre-line mb-6">
-                {currentQuestions[currentIdx]?.question || ''}
+                {currentQuestions[currentIdx].question}
               </h3>
 
               {/* Options */}
               <div className="space-y-3 mb-8">
-                {(currentQuestions[currentIdx]?.options || []).map((opt, optIdx) => {
+                {currentQuestions[currentIdx].options.map((opt, optIdx) => {
                   const isSelected = selectedOption === optIdx;
                   return (
                     <button
@@ -1620,7 +1551,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 3: RESULTS */}
+        {/* TAB 3: QUIZ RESULTS & EXPLANATION */}
         {activeTab === 'results' && selectedHistoryItem && (
           <div className="max-w-3xl mx-auto space-y-6">
             
@@ -1637,14 +1568,14 @@ export default function App() {
                 <div>
                   <div className="text-xs text-slate-500 font-semibold">正解数</div>
                   <div className="text-3xl font-black text-slate-800">
-                    {selectedHistoryItem.score ?? 0} <span className="text-sm font-normal text-slate-500">/ {selectedHistoryItem.totalQuestions ?? 0} 問</span>
+                    {selectedHistoryItem.score} <span className="text-sm font-normal text-slate-500">/ {selectedHistoryItem.totalQuestions} 問</span>
                   </div>
                 </div>
                 <div className="h-10 w-px bg-slate-200"></div>
                 <div>
                   <div className="text-xs text-slate-500 font-semibold">正答率</div>
                   <div className="text-4xl font-black text-indigo-600">
-                    {selectedHistoryItem.percentage ?? 0}%
+                    {selectedHistoryItem.percentage}%
                   </div>
                 </div>
               </div>
@@ -1653,7 +1584,7 @@ export default function App() {
               <div className="max-w-sm mx-auto bg-slate-50 rounded-xl p-3 border border-slate-200 mt-4">
                 <div className="text-xs text-slate-500">四谷大塚 クラス判定目安</div>
                 <div className="font-extrabold text-sm text-indigo-900 mt-0.5">
-                  {getRankBadge(selectedHistoryItem.percentage ?? 0).title}
+                  {getRankBadge(selectedHistoryItem.percentage).title}
                 </div>
               </div>
 
@@ -1681,7 +1612,7 @@ export default function App() {
                 問題ごとの詳細と解説
               </h3>
 
-              {(selectedHistoryItem.answeredBreakdown || []).map((item, idx) => (
+              {selectedHistoryItem.answeredBreakdown.map((item, idx) => (
                 <div
                   key={idx}
                   className={`p-4 rounded-xl border ${
@@ -1695,7 +1626,7 @@ export default function App() {
                       }`}>
                         {idx + 1}
                       </span>
-                      <span className="font-bold text-xs text-slate-700">【{item.category || '思考力'}】</span>
+                      <span className="font-bold text-xs text-slate-700">【{item.category}】</span>
                     </div>
                     <span className={`text-xs font-bold px-2 py-0.5 rounded ${
                       item.isCorrect ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
@@ -1712,10 +1643,10 @@ export default function App() {
                     <div>
                       <span className="text-slate-500">あなたの回答: </span>
                       <span className={item.isCorrect ? 'font-bold text-emerald-700' : 'font-bold text-rose-600'}>
-                        {item.options ? (item.options[item.userAnswerIndex] || '未回答') : '未回答'}
+                        {item.options[item.userAnswerIndex] || '未回答'}
                       </span>
                     </div>
-                    {!item.isCorrect && item.options && (
+                    {!item.isCorrect && (
                       <div>
                         <span className="text-slate-500">正しい解答: </span>
                         <span className="font-bold text-emerald-700">{item.options[item.correctIndex]}</span>
@@ -1723,7 +1654,7 @@ export default function App() {
                     )}
                     <div className="mt-2 pt-2 border-t border-slate-100 text-slate-600 whitespace-pre-line leading-relaxed bg-slate-50 p-2 rounded">
                       <strong className="text-indigo-900 block mb-1">【解説】</strong>
-                      {item.explanation || '解説はありません。'}
+                      {item.explanation}
                     </div>
                   </div>
                 </div>
@@ -1745,13 +1676,67 @@ export default function App() {
                   学習実績・成績ダッシュボード
                 </h2>
                 <p className="text-xs text-slate-500">
-                  {userProfile.name} さんのテスト履歴と弱点分野の分析結果です。
+                  {userProfile.name} さんのテスト履歴と全期間・月別の分析結果です。
                 </p>
               </div>
 
-              {/* Status Badge */}
               <div className={`px-4 py-2 rounded-xl border text-xs font-bold ${currentRank.border} ${currentRank.color}`}>
                 判定: {currentRank.title}
+              </div>
+            </div>
+
+            {/* PERIOD FILTER BAR */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-indigo-600" />
+                <span className="font-bold text-xs text-slate-700">期間絞り込み:</span>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => setHistoryPeriodFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    historyPeriodFilter === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  全期間
+                </button>
+                <button
+                  onClick={() => setHistoryPeriodFilter('THIS_MONTH')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    historyPeriodFilter === 'THIS_MONTH' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  今月
+                </button>
+                <button
+                  onClick={() => setHistoryPeriodFilter('LAST_MONTH')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    historyPeriodFilter === 'LAST_MONTH' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  先月
+                </button>
+                <button
+                  onClick={() => setHistoryPeriodFilter('LAST_30')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    historyPeriodFilter === 'LAST_30' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  直近30日
+                </button>
+                <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-lg border border-slate-200">
+                  <span className="text-[10px] text-slate-500 font-bold">日付指定:</span>
+                  <input
+                    type="date"
+                    value={customSearchDate}
+                    onChange={(e) => {
+                      setCustomSearchDate(e.target.value);
+                      setHistoryPeriodFilter('CUSTOM_DATE');
+                    }}
+                    className="bg-transparent text-xs outline-none font-bold text-slate-700"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1762,11 +1747,8 @@ export default function App() {
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center">
                 <h3 className="font-bold text-slate-800 text-sm mb-2 w-full text-left flex items-center gap-2">
                   <BrainCircuit className="w-4 h-4 text-indigo-600" />
-                  分野別理解度（レーダーチャート）
+                  指定期間の分野別理解度（レーダー）
                 </h3>
-                <p className="text-[11px] text-slate-400 mb-4 w-full text-left">
-                  正答率が低い分野（凹んでいる部分）が四谷大塚テスト前の重点復習ポイントです。
-                </p>
                 <div className="w-full h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
@@ -1785,9 +1767,6 @@ export default function App() {
                   <Trophy className="w-4 h-4 text-amber-500" />
                   得点率の推移（成長グラフ）
                 </h3>
-                <p className="text-[11px] text-slate-400 mb-4 w-full text-left">
-                  過去のテスト結果の推移です。70%以上で入塾試験安心ラインに到達します。
-                </p>
                 <div className="w-full h-64">
                   {scoreTrendData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
@@ -1801,7 +1780,7 @@ export default function App() {
                     </ResponsiveContainer>
                   ) : (
                     <div className="h-full flex items-center justify-center text-xs text-slate-400">
-                      まだテスト履歴がありません。テストを受けるとグラフが表示されます。
+                      該当する期間のテスト履歴がありません。
                     </div>
                   )}
                 </div>
@@ -1813,16 +1792,16 @@ export default function App() {
             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
               <h3 className="font-bold text-slate-900 text-sm mb-4 flex items-center gap-2">
                 <History className="w-4 h-4 text-indigo-600" />
-                過去のテスト履歴一覧
+                テスト履歴一覧 ({filteredHistoryDocs.length} 件)
               </h3>
 
-              {(!historyDocs || historyDocs.length === 0) ? (
+              {filteredHistoryDocs.length === 0 ? (
                 <div className="text-center py-8 text-xs text-slate-400">
-                  テストの履歴がありません。テストを受けると自動的にここに記録されます。
+                  該当する期間のテスト履歴がありません。
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {historyDocs.map((item, index) => (
+                  {filteredHistoryDocs.map((item, index) => (
                     <div
                       key={item.id || index}
                       onClick={() => {
@@ -1834,22 +1813,22 @@ export default function App() {
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-bold text-sm text-slate-900">
-                            【{item.gradeLabel || '5年生'}】{item.subject === 'math' ? '算数テスト' : item.subject === 'japanese' ? '国語テスト' : item.subject === 'uyghur' ? 'ウイグル語テスト' : item.subject === 'daily' ? '本日のAI模試' : '算国総合模試'}
+                            【{item.gradeLabel || '標準'}】{item.subject === 'math' ? '算数テスト' : item.subject === 'japanese' ? '国語テスト' : item.subject === 'uyghur' ? 'ウイグル語テスト' : item.subject === 'daily' ? '本日のAI模試' : '算国総合模試'}
                           </span>
                           <span className="text-[11px] text-slate-400">{item.dateStr}</span>
                         </div>
                         <div className="text-xs text-slate-500">
-                          正解: {item.score ?? 0} / {item.totalQuestions ?? 0} 問 ({item.durationSec ? `${item.durationSec}秒` : ''})
+                          正解: {item.score} / {item.totalQuestions} 問 ({item.durationSec ? `${item.durationSec}秒` : ''})
                         </div>
                       </div>
 
                       <div className="flex items-center gap-3">
                         <div className="text-right">
                           <div className="font-extrabold text-base text-indigo-600">
-                            {item.percentage ?? 0}%
+                            {item.percentage}%
                           </div>
                           <div className="text-[10px] text-emerald-600 font-semibold">
-                            {(item.percentage ?? 0) >= 60 ? '合格基準達成' : '要復習'}
+                            {item.percentage >= 60 ? '合格基準達成' : '要復習'}
                           </div>
                         </div>
                         <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -1867,212 +1846,231 @@ export default function App() {
         {activeTab === 'admin' && isParentAdmin && (
           <div className="space-y-6">
             
-            {/* Admin Header */}
-            <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-xl flex items-center justify-between flex-wrap gap-4 border border-indigo-800">
-              <div className="space-y-2">
-                <div className="inline-flex items-center gap-2 bg-amber-400 text-slate-950 px-3 py-1 rounded-full text-xs font-black">
-                  <ShieldCheck className="w-4 h-4" />
-                  保護者専用管理モード
+            {/* Parent Admin Header Badge */}
+            <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex items-center justify-between flex-wrap gap-4 border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black">
+                  <ShieldCheck className="w-7 h-7" />
                 </div>
-                <h2 className="text-2xl sm:text-3xl font-black">
-                  ご家族の学習進捗＆習慣化ダッシュボード
-                </h2>
-                <p className="text-xs sm:text-sm text-indigo-200">
-                  毎日のテスト実施状況・連続クリア日数・成績の成長グラフをまとめて確認できます。
-                </p>
+                <div>
+                  <div className="inline-block bg-amber-400/20 text-amber-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-amber-400/30">
+                    保護者管理モード認証済み
+                  </div>
+                  <h2 className="text-xl font-black text-white">家族全員の学習分析・歴史管理</h2>
+                </div>
               </div>
 
               <button
                 onClick={handleAdminLogout}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-4 py-2 rounded-xl text-xs transition flex items-center gap-2 border border-slate-700"
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-4 py-2 rounded-xl text-xs transition border border-slate-700"
               >
-                <Unlock className="w-4 h-4 text-amber-400" />
-                <span>管理モードを終了</span>
+                保護者モードを終了
               </button>
             </div>
 
-            {/* Overview Stats Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="flex items-center justify-between text-slate-500 mb-2">
-                  <span className="text-xs font-bold">本日のテスト完了人数</span>
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+            {/* CHILD SELECTOR & HISTORICAL PERIOD FILTER */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-3 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-indigo-600" />
+                  <span className="font-bold text-sm text-slate-800">対象のお子様を選択:</span>
                 </div>
-                <div className="text-2xl font-black text-slate-900">
-                  {familyMemberAnalytics.filter(m => m.testedToday).length} <span className="text-xs font-normal text-slate-500">/ {familyMemberAnalytics.length || 1} 人</span>
-                </div>
-                <div className="text-[11px] text-emerald-600 font-semibold mt-1">
-                  毎日1回の習慣化継続中
-                </div>
-              </div>
-
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="flex items-center justify-between text-slate-500 mb-2">
-                  <span className="text-xs font-bold">最高連続日数 (Streak)</span>
-                  <Flame className="w-5 h-5 text-amber-500" />
-                </div>
-                <div className="text-2xl font-black text-amber-600">
-                  {Math.max(...familyMemberAnalytics.map(m => m.streak), 0)} <span className="text-xs font-normal text-slate-500">日連続</span>
-                </div>
-                <div className="text-[11px] text-amber-600 font-semibold mt-1">
-                  モチベーション維持良好
-                </div>
-              </div>
-
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="flex items-center justify-between text-slate-500 mb-2">
-                  <span className="text-xs font-bold">家族累計テスト受検回数</span>
-                  <Trophy className="w-5 h-5 text-indigo-500" />
-                </div>
-                <div className="text-2xl font-black text-slate-900">
-                  {historyDocs.length} <span className="text-xs font-normal text-slate-500">回</span>
-                </div>
-                <div className="text-[11px] text-indigo-600 font-semibold mt-1">
-                  テスト解き直し含む総数
-                </div>
-              </div>
-
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="flex items-center justify-between text-slate-500 mb-2">
-                  <span className="text-xs font-bold">家族平均正答率</span>
-                  <TrendingUp className="w-5 h-5 text-indigo-500" />
-                </div>
-                <div className="text-2xl font-black text-indigo-600">
-                  {averageScore}%
-                </div>
-                <div className="text-[11px] text-slate-500 font-semibold mt-1">
-                  四谷大塚 クラス判定目安: {currentRank.title}
-                </div>
-              </div>
-            </div>
-
-            {/* Member Progress Cards */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 border-b border-slate-100 pb-3">
-                <Users className="w-5 h-5 text-indigo-600" />
-                お子様ごとの進捗＆習慣化チェック
-              </h3>
-
-              {familyMemberAnalytics.length === 0 ? (
-                <div className="text-center py-8 text-xs text-slate-400">
-                  まだテストデータがありません。お子様がテストを受けると、自動的にここに進捗が表示されます。
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {familyMemberAnalytics.map((member, idx) => (
-                    <div key={idx} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-amber-400 text-slate-900 font-bold flex items-center justify-center text-xs">
-                            {member.name.charAt(0)}
-                          </div>
-                          <div>
-                            <div className="font-extrabold text-sm text-slate-900">{member.name}</div>
-                            <div className="text-[10px] text-slate-400">最終受検: {member.lastExamDate}</div>
-                          </div>
-                        </div>
-
-                        <div className={`px-2.5 py-1 rounded-lg text-xs font-bold ${member.rankColor}`}>
-                          {member.rankTitle}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 text-center bg-white p-2.5 rounded-lg border border-slate-200 text-xs">
-                        <div>
-                          <div className="text-[10px] text-slate-400">本日のテスト</div>
-                          <div className={`font-black mt-0.5 ${member.testedToday ? 'text-emerald-600' : 'text-slate-400'}`}>
-                            {member.testedToday ? '完了 ✓' : '未完了'}
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="text-[10px] text-slate-400">連続日数</div>
-                          <div className="font-black text-amber-600 mt-0.5">
-                            🔥 {member.streak} 日
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="text-[10px] text-slate-400">平均点</div>
-                          <div className="font-black text-indigo-600 mt-0.5">
-                            {member.avgScore}%
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => setAdminSelectedChildName('ALL')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                      adminSelectedChildName === 'ALL'
+                        ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    全員表示
+                  </button>
+                  {childNamesList.map((name, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setAdminSelectedChildName(name)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                        adminSelectedChildName === name
+                          ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {name}
+                    </button>
                   ))}
                 </div>
-              )}
-            </div>
+              </div>
 
-            {/* Past 14-Days Habit Tracker Calendar */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 overflow-x-auto">
-              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-indigo-600" />
-                直近14日間の「毎日1回テスト」実施状況カレンダー
-              </h3>
-
-              {familyMemberAnalytics.length === 0 ? (
-                <div className="text-center py-4 text-xs text-slate-400">データなし</div>
-              ) : (
-                <div className="min-w-[600px]">
-                  <div className="grid grid-cols-[140px_repeat(14,1fr)] gap-1 text-center text-[10px] font-bold text-slate-500 border-b border-slate-100 pb-2 mb-2">
-                    <div className="text-left pl-2">生徒名</div>
-                    {past14Days.map((day, i) => (
-                      <div key={i} className={day.dStr === todayStr ? 'text-amber-600 font-black' : ''}>
-                        {day.label}
-                      </div>
-                    ))}
+              {/* Historical Period Controls */}
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4 text-indigo-600" />
+                  <span className="font-bold text-xs text-slate-700">歴史データ期間指定:</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => setHistoryPeriodFilter('ALL')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      historyPeriodFilter === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    全期間
+                  </button>
+                  <button
+                    onClick={() => setHistoryPeriodFilter('THIS_MONTH')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      historyPeriodFilter === 'THIS_MONTH' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    今月
+                  </button>
+                  <button
+                    onClick={() => setHistoryPeriodFilter('LAST_MONTH')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      historyPeriodFilter === 'LAST_MONTH' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    先月
+                  </button>
+                  <button
+                    onClick={() => setHistoryPeriodFilter('LAST_30')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      historyPeriodFilter === 'LAST_30' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    直近30日
+                  </button>
+                  <div className="flex items-center gap-1 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                    <span className="text-[10px] text-slate-500 font-bold">日付指定:</span>
+                    <input
+                      type="date"
+                      value={customSearchDate}
+                      onChange={(e) => {
+                        setCustomSearchDate(e.target.value);
+                        setHistoryPeriodFilter('CUSTOM_DATE');
+                      }}
+                      className="bg-transparent text-xs outline-none font-bold text-slate-700"
+                    />
                   </div>
-
-                  {familyMemberAnalytics.map((member, mIdx) => (
-                    <div key={mIdx} className="grid grid-cols-[140px_repeat(14,1fr)] gap-1 text-center items-center py-2 border-b border-slate-50 text-xs">
-                      <div className="font-bold text-left pl-2 text-slate-800 truncate">{member.name}</div>
-                      {past14Days.map((day, dIdx) => {
-                        const isDone = member.dates.includes(day.dStr);
-                        return (
-                          <div key={dIdx} className="flex justify-center">
-                            {isDone ? (
-                              <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-[10px]">
-                                ✓
-                              </span>
-                            ) : (
-                              <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-300 flex items-center justify-center text-[10px]">
-                                ・
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
                 </div>
-              )}
+              </div>
             </div>
 
-            {/* Score Growth Chart */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-indigo-600" />
-                全体の成績伸び率（過去の全テスト推移）
+            {/* 30-DAY HABIT CALENDAR */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+              <h3 className="font-bold text-slate-800 text-sm mb-3 flex items-center gap-2">
+                <Flame className="w-5 h-5 text-amber-500" />
+                直近30日間の学習実施カレンダー（緑色＝受検完了）
               </h3>
-              <div className="w-full h-64">
-                {scoreTrendData.length > 0 ? (
+              <div className="grid grid-cols-6 sm:grid-cols-10 gap-2">
+                {calendar30Days.map((d, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-2 rounded-xl text-center border text-xs font-bold transition ${
+                      d.isTested
+                        ? 'bg-emerald-500 text-white border-emerald-600 shadow-sm'
+                        : 'bg-slate-100 text-slate-400 border-slate-200'
+                    }`}
+                  >
+                    <div className="text-[9px] opacity-80">{d.monthNum}/{d.dayNum}</div>
+                    <div className="text-sm font-black">{d.isTested ? '✓' : '•'}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* VISUAL ANALYTICS */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              
+              {/* Radar Chart */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center">
+                <h3 className="font-bold text-slate-800 text-sm mb-2 w-full text-left flex items-center gap-2">
+                  <BrainCircuit className="w-4 h-4 text-indigo-600" />
+                  選択したお子様・期間の分野別理解度
+                </h3>
+                <div className="w-full h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={scoreTrendData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} />
-                      <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#64748b' }} />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="score" stroke="#4f46e5" strokeWidth={3} dot={{ r: 5, fill: '#4f46e5' }} />
-                    </LineChart>
+                    <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
+                      <PolarGrid stroke="#e2e8f0" />
+                      <PolarAngleAxis dataKey="subject" tick={{ fill: '#475569', fontSize: 11 }} />
+                      <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 10 }} />
+                      <Radar name="正答率(%)" dataKey="score" stroke="#4f46e5" fill="#6366f1" fillOpacity={0.5} />
+                    </RadarChart>
                   </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-xs text-slate-400">
-                    データなし
-                  </div>
-                )}
+                </div>
               </div>
+
+              {/* Line Chart */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center">
+                <h3 className="font-bold text-slate-800 text-sm mb-2 w-full text-left flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-amber-500" />
+                  得点成長グラフ
+                </h3>
+                <div className="w-full h-64">
+                  {scoreTrendData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={scoreTrendData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} />
+                        <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#64748b' }} />
+                        <Tooltip />
+                        <Line type="monotone" dataKey="score" stroke="#4f46e5" strokeWidth={3} dot={{ r: 5, fill: '#4f46e5' }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                      条件に一致するテストデータがありません。
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+            {/* DETAILED TEST HISTORY LIST */}
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
+              <h3 className="font-bold text-slate-900 text-sm mb-4 flex items-center gap-2">
+                <History className="w-4 h-4 text-indigo-600" />
+                全テスト履歴詳細・誤答復習 ({filteredHistoryDocs.length} 件)
+              </h3>
+
+              {filteredHistoryDocs.length === 0 ? (
+                <div className="text-center py-8 text-xs text-slate-400">
+                  該当するテスト記録がありません。
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredHistoryDocs.map((item, index) => (
+                    <div
+                      key={item.id || index}
+                      onClick={() => {
+                        setSelectedHistoryItem(item);
+                        setActiveTab('results');
+                      }}
+                      className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-indigo-50/50 hover:border-indigo-200 transition cursor-pointer flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-extrabold text-sm text-slate-900">
+                            {item.userDisplayName || '生徒'} - 【{item.gradeLabel || '標準'}】{item.subject === 'math' ? '算数テスト' : item.subject === 'japanese' ? '国語テスト' : item.subject === 'uyghur' ? 'ウイグル語' : item.subject === 'daily' ? '本日のAI模試' : '算国総合模試'}
+                          </span>
+                          <span className="text-[11px] text-slate-400">{item.dateStr}</span>
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          正解: {item.score} / {item.totalQuestions} 問 ({item.percentage}%)
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-bold text-indigo-600 hover:underline">
+                          問題と解答・解説を見る →
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
           </div>
@@ -2083,7 +2081,7 @@ export default function App() {
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 text-xs py-6 border-t border-slate-800 text-center">
         <div className="max-w-6xl mx-auto px-4">
-          四谷大塚 入塾テスト実戦対策・学習実績保存システム (ご家族運用・保護者管理機能搭載)
+          四谷大塚 入塾テスト実戦対策・学習実績保存システム (ご家族運用・多言語＆学年対応)
         </div>
       </footer>
     </div>
