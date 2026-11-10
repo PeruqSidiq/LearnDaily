@@ -50,7 +50,7 @@ const getTodayDateString = () => {
 };
 
 // ==========================================
-// Base Question Datasets (Grade 2 & Grade 3-5)
+// Base Question Datasets (Grade 2 & Grade 5)
 // ==========================================
 
 // --- GRADE 2 QUESTIONS ---
@@ -240,8 +240,8 @@ const JAPANESE_QUESTIONS_G2 = [
   }
 ];
 
-// --- GRADE 3-5 QUESTIONS ---
-const MATH_QUESTIONS = [
+// --- GRADE 5 QUESTIONS ---
+const MATH_QUESTIONS_G5 = [
   {
     id: "m_1",
     category: "計算の工夫",
@@ -334,7 +334,7 @@ const MATH_QUESTIONS = [
   }
 ];
 
-const JAPANESE_QUESTIONS = [
+const JAPANESE_QUESTIONS_G5 = [
   {
     id: "j_1",
     category: "漢字の読み",
@@ -526,9 +526,92 @@ const UYGHUR_QUESTIONS = [
   }
 ];
 
+// Helper: Shuffle Array (Fisher-Yates)
+const shuffleArray = (array) => {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+};
+
+// Daily Dynamic Fallback Generator (Generates new numerical variations every day)
+const generateDailyDynamicQuestions = (grade) => {
+  const today = new Date();
+  const dateSeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  
+  // Pseudo-random based on date seed
+  const seededRand = (offset) => {
+    const x = Math.sin(dateSeed + offset) * 10000;
+    return x - Math.floor(x);
+  };
+
+  if (grade === 'grade2') {
+    // Grade 2 Dynamic Variations
+    const a1 = Math.floor(seededRand(1) * 15) + 15; // e.g. 18 ~ 30
+    const b1 = Math.floor(seededRand(2) * 10) + 10;
+    const c1 = 50 - a1;
+    const ans1 = 50 + b1;
+
+    const dynamicMathG2 = [
+      {
+        id: `m2_dyn_1_${dateSeed}`,
+        category: "計算の工夫",
+        categoryName: "算数計算",
+        question: `つぎの けいさんを くふうして しなさい。\n${a1} + ${b1} + ${c1}`,
+        options: [`${ans1}`, `${ans1 - 5}`, `${ans1 + 10}`, `${ans1 - 10}`],
+        correctIndex: 0,
+        explanation: `${a1} と ${c1} を さきに たすと 50 になります。\n50 + ${b1} = ${ans1} と かんたんに けいさんできます。`
+      },
+      ...MATH_QUESTIONS_G2.slice(1)
+    ];
+
+    return shuffleArray([...dynamicMathG2, ...JAPANESE_QUESTIONS_G2]);
+  } else {
+    // Grade 5 Dynamic Variations
+    const multX = (Math.floor(seededRand(1) * 20) + 12) * 3; // e.g. 45
+    const numY1 = Math.floor(seededRand(2) * 30) + 25; // e.g. 35
+    const numY2 = 100 - numY1;
+    const multAns = multX * 100;
+
+    const interval = (Math.floor(seededRand(3) * 3) + 2) * 2; // e.g. 4, 6, 8
+    const count = Math.floor(seededRand(4) * 8) + 10; // e.g. 12
+    const totalDist = interval * count;
+    const treeAns = count + 1;
+
+    const dynamicMath = [
+      {
+        id: `m_dyn_1_${dateSeed}`,
+        category: "計算の工夫",
+        categoryName: "算数計算",
+        question: `次の計算をしなさい。\n${multX} × ${numY1} + ${multX} × ${numY2}`,
+        options: [`${multAns}`, `${multAns / 10}`, `${multAns * 2}`, `${multAns - 100}`],
+        correctIndex: 0,
+        explanation: `分配法則 (${multX} × (${numY1} + ${numY2})) を使います。\n${multX} × 100 = ${multAns} となります。`
+      },
+      {
+        id: `m_dyn_2_${dateSeed}`,
+        category: "植木算",
+        categoryName: "特殊算",
+        question: `長さ ${totalDist}m のまっすぐな道路の片側に、端から端まで ${interval}m おきに木を植えます。木は全部で何本必要ですか。`,
+        options: [`${treeAns - 1} 本`, `${treeAns} 本`, `${treeAns + 1} 本`, `${treeAns - 2} 本`],
+        correctIndex: 1,
+        explanation: `両端に植える植木算です。\n間の数 ＝ ${totalDist} ÷ ${interval} ＝ ${count}（個）。\n木の数 ＝ ${count} ＋ 1 ＝ ${treeAns}（本）となります。`
+      },
+      ...MATH_QUESTIONS_G5.slice(2)
+    ];
+
+    const mathShuffled = shuffleArray(dynamicMath).slice(0, 10);
+    const jpShuffled = shuffleArray(JAPANESE_QUESTIONS_G5).slice(0, 10);
+
+    return [...mathShuffled, ...jpShuffled];
+  }
+};
+
 // Daily Question Generator using Gemini API with Local Fallback
-const fetchAIDailyQuestions = async (subject = 'combined', grade = 'grade3_4') => {
-  const gradeLabel = grade === 'grade2' ? '小学2年生' : grade === 'grade5' ? '小学5年生' : '小学3〜4年生';
+const fetchAIDailyQuestions = async (subject = 'combined', grade = 'grade2') => {
+  const gradeLabel = grade === 'grade2' ? '小学2年生' : '小学5年生';
   
   const systemPrompt = `あなたは四谷大塚の入塾テスト・中学受験の算数と国語の専門講師です。
 ${gradeLabel}対象の四谷大塚入塾テストレベルの選択肢付き問題を生成してください。
@@ -581,14 +664,11 @@ ${gradeLabel}対象の四谷大塚入塾テストレベルの選択肢付き問�
       }
     }
   } catch (err) {
-    console.warn("AI Question generation falling back to dynamic pool:", err);
+    console.warn("AI Question generation falling back to dynamic daily pool:", err);
   }
 
-  // Fallback Dynamic Generator
-  if (grade === 'grade2') {
-    return [...MATH_QUESTIONS_G2, ...JAPANESE_QUESTIONS_G2];
-  }
-  return [...MATH_QUESTIONS, ...JAPANESE_QUESTIONS];
+  // Fallback Dynamic Generator (Generates fresh variation based on current date)
+  return generateDailyDynamicQuestions(grade);
 };
 
 export default function App() {
@@ -605,10 +685,10 @@ export default function App() {
   const [adminPasswordInput, setAdminPasswordInput] = useState('');
   const [adminAuthError, setAdminAuthError] = useState('');
 
-  // Navigation & Grade States
+  // Navigation & Grade States (2年生 or 5年生)
   const [activeTab, setActiveTab] = useState('home'); // 'home', 'quiz', 'results', 'history', 'admin'
   const [selectedSubject, setSelectedSubject] = useState('math'); // 'math', 'japanese', 'uyghur', 'combined', 'daily'
-  const [selectedGrade, setSelectedGrade] = useState('grade3_4'); // 'grade2', 'grade3_4', 'grade5'
+  const [selectedGrade, setSelectedGrade] = useState('grade2'); // 'grade2', 'grade5'
   
   // Quiz Runner States
   const [currentQuestions, setCurrentQuestions] = useState([]);
@@ -782,15 +862,15 @@ export default function App() {
     let questions = [];
 
     if (selectedGrade === 'grade2') {
-      if (subject === 'math') questions = MATH_QUESTIONS_G2;
-      else if (subject === 'japanese') questions = JAPANESE_QUESTIONS_G2;
-      else if (subject === 'uyghur') questions = UYGHUR_QUESTIONS;
-      else questions = [...MATH_QUESTIONS_G2, ...JAPANESE_QUESTIONS_G2];
+      if (subject === 'math') questions = shuffleArray(MATH_QUESTIONS_G2);
+      else if (subject === 'japanese') questions = shuffleArray(JAPANESE_QUESTIONS_G2);
+      else if (subject === 'uyghur') questions = shuffleArray(UYGHUR_QUESTIONS);
+      else questions = generateDailyDynamicQuestions('grade2');
     } else {
-      if (subject === 'math') questions = MATH_QUESTIONS;
-      else if (subject === 'japanese') questions = JAPANESE_QUESTIONS;
-      else if (subject === 'uyghur') questions = UYGHUR_QUESTIONS;
-      else questions = [...MATH_QUESTIONS, ...JAPANESE_QUESTIONS];
+      if (subject === 'math') questions = shuffleArray(MATH_QUESTIONS_G5);
+      else if (subject === 'japanese') questions = shuffleArray(JAPANESE_QUESTIONS_G5);
+      else if (subject === 'uyghur') questions = shuffleArray(UYGHUR_QUESTIONS);
+      else questions = generateDailyDynamicQuestions('grade5');
     }
 
     setCurrentQuestions(questions);
@@ -872,7 +952,7 @@ export default function App() {
       dateStr: new Date().toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
       subject: selectedSubject,
       grade: selectedGrade,
-      gradeLabel: selectedGrade === 'grade2' ? '小学2年生' : selectedGrade === 'grade5' ? '小学5年生' : '小学3〜4年生',
+      gradeLabel: selectedGrade === 'grade2' ? '小学2年生' : '小学5年生',
       score: correctCount,
       totalQuestions: totalQ,
       percentage: percentage,
@@ -1219,7 +1299,7 @@ export default function App() {
         {activeTab === 'home' && (
           <div className="space-y-6">
             
-            {/* Grade Selector */}
+            {/* Grade Selector (2年生 or 5年生) */}
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-2">
                 <User className="w-5 h-5 text-indigo-600" />
@@ -1228,33 +1308,23 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setSelectedGrade('grade2')}
-                  className={`px-4 py-2 rounded-xl text-xs font-black transition ${
+                  className={`px-5 py-2.5 rounded-xl text-xs font-black transition ${
                     selectedGrade === 'grade2'
-                      ? 'bg-amber-400 text-slate-950 shadow-sm'
+                      ? 'bg-amber-400 text-slate-950 shadow-md scale-105'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  小学2年生（低学年向け）
-                </button>
-                <button
-                  onClick={() => setSelectedGrade('grade3_4')}
-                  className={`px-4 py-2 rounded-xl text-xs font-black transition ${
-                    selectedGrade === 'grade3_4'
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  小学3・4年生（標準）
+                  🌱 小学2年生（弟さん・妹さん用）
                 </button>
                 <button
                   onClick={() => setSelectedGrade('grade5')}
-                  className={`px-4 py-2 rounded-xl text-xs font-black transition ${
+                  className={`px-5 py-2.5 rounded-xl text-xs font-black transition ${
                     selectedGrade === 'grade5'
-                      ? 'bg-indigo-600 text-white shadow-sm'
+                      ? 'bg-indigo-600 text-white shadow-md scale-105'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  小学5年生（高学年）
+                  🚀 小学5年生（お兄ちゃん用）
                 </button>
               </div>
             </div>
@@ -1269,7 +1339,7 @@ export default function App() {
                 <div className="max-w-xl space-y-3">
                   <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-md px-3.5 py-1 rounded-full text-xs font-bold text-amber-100 border border-white/30">
                     <Calendar className="w-4 h-4 text-amber-200" />
-                    【{selectedGrade === 'grade2' ? '小学2年生用' : selectedGrade === 'grade5' ? '小学5年生用' : '小学3・4年生用'}】本日の20問模試
+                    【{selectedGrade === 'grade2' ? '小学2年生用' : '小学5年生用'}】本日の20問模試
                   </div>
 
                   <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
@@ -1277,7 +1347,7 @@ export default function App() {
                   </h2>
 
                   <p className="text-amber-100 text-xs sm:text-sm leading-relaxed">
-                    Gemini AIが{selectedGrade === 'grade2' ? '小学2年生向け' : '選択した学年向け'}の入塾テスト問題を自動生成します。1日20問チャレンジして合格レベルの思考力を身につけましょう！
+                    Gemini AIが{selectedGrade === 'grade2' ? '小学2年生向け' : '小学5年生向け'}の入塾テスト問題を自動生成します。1日20問チャレンジして合格レベルの思考力を身につけましょう！
                   </p>
 
                   <div className="flex items-center gap-4 pt-2">
@@ -1328,7 +1398,7 @@ export default function App() {
             <div>
               <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-indigo-600" />
-                分野別・総合練習テスト（{selectedGrade === 'grade2' ? '2年生向け' : '標準コース'}）
+                分野別・総合練習テスト（{selectedGrade === 'grade2' ? '2年生向け' : '5年生向け'}）
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -1484,7 +1554,7 @@ export default function App() {
             <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center justify-between">
               <div>
                 <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-100">
-                  {selectedGrade === 'grade2' ? '2年生' : '標準'} / {selectedSubject === 'math' ? '算数' : selectedSubject === 'japanese' ? '国語' : selectedSubject === 'uyghur' ? 'ウイグル語' : selectedSubject === 'daily' ? '本日のAI模試' : '算国総合'}
+                  {selectedGrade === 'grade2' ? '2年生' : '5年生'} / {selectedSubject === 'math' ? '算数' : selectedSubject === 'japanese' ? '国語' : selectedSubject === 'uyghur' ? 'ウイグル語' : selectedSubject === 'daily' ? '本日のAI模試' : '算国総合'}
                 </span>
                 <span className="ml-2 text-xs font-semibold text-slate-500">
                   第 {currentIdx + 1} / {currentQuestions.length} 問
@@ -1764,7 +1834,7 @@ export default function App() {
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-bold text-sm text-slate-900">
-                            【{item.gradeLabel || '標準'}】{item.subject === 'math' ? '算数テスト' : item.subject === 'japanese' ? '国語テスト' : item.subject === 'uyghur' ? 'ウイグル語テスト' : item.subject === 'daily' ? '本日のAI模試' : '算国総合模試'}
+                            【{item.gradeLabel || '5年生'}】{item.subject === 'math' ? '算数テスト' : item.subject === 'japanese' ? '国語テスト' : item.subject === 'uyghur' ? 'ウイグル語テスト' : item.subject === 'daily' ? '本日のAI模試' : '算国総合模試'}
                           </span>
                           <span className="text-[11px] text-slate-400">{item.dateStr}</span>
                         </div>
