@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+```react
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import {
   getAuth,
@@ -22,7 +23,7 @@ import {
 } from 'recharts';
 import {
   Trophy, BookOpen, Calculator, CheckCircle2, User, LogIn, LogOut, BarChart2, ChevronRight, Sparkles, BrainCircuit, Check, AlertCircle, History, ArrowRight, Calendar, Flame, RefreshCw, Zap,
-  ShieldCheck, Lock, Unlock, Users, TrendingUp, Filter, CalendarDays
+  ShieldCheck, Lock, Users, TrendingUp, Filter, CalendarDays, Timer, Target, RotateCcw
 } from 'lucide-react';
 
 // ==========================================
@@ -45,10 +46,21 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'yotsuya-otsuka-prep-app';
 
+// Authorized Parent Admin Google Account
+const ADMIN_EMAIL = 'peruqsidiq@gmail.com';
+
 // Helper to get Today's Date String (YYYY-MM-DD)
 const getTodayDateString = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// Helper to format seconds as MM:SS
+const formatSeconds = (sec) => {
+  const safeSec = Math.max(0, sec);
+  const m = Math.floor(safeSec / 60);
+  const s = safeSec % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 };
 
 // ==========================================
@@ -62,8 +74,8 @@ const MATH_QUESTIONS_G2 = [
     categoryName: "算数計算",
     question: "つぎの けいさんを くふうして しなさい。\n28 + 15 + 12",
     options: ["55", "50", "45", "60"],
-    correctIndex: 1,
-    explanation: "28 と 12 を さきに たすと 40 になります。\n40 + 15 = 55 ではなく 50 と かんたんに けいさんできます。"
+    correctIndex: 0,
+    explanation: "28 と 12 を さきに たすと 40 になります。\n40 + 15 = 55 と かんたんに けいさんできます。"
   },
   {
     id: "m2_2",
@@ -465,7 +477,7 @@ const UYGHUR_QUESTIONS = [
     category: "家族・人名",
     categoryName: "ウイグル語",
     question: "ウイグル語で「お母さん」を表す言葉（Ana）はどれですか。",
-    options: ["ئانا (Ana)", "أتا (Ata)", "ئاكا (Aka)", "سىڭىل (Singil)"],
+    options: ["ئانا (Ana)", "ئتا (Ata)", "ئاكا (Aka)", "سىڭىل (Singil)"],
     correctIndex: 0,
     explanation: "「ئانا (Ana)」は「お母さん」を意味します。"
   },
@@ -665,23 +677,48 @@ ${gradeLabel}対象の四谷大塚入塾テストレベルの選択肢付き問�
   return generateDailyDynamicQuestions(grade);
 };
 
+// Helper to render subject display title
+const getSubjectLabel = (subject) => {
+  switch (subject) {
+    case 'math': return '算数テスト';
+    case 'japanese': return '国語テスト';
+    case 'uyghur': return 'ウイグル語テスト';
+    case 'daily': return '本日のAI模試';
+    case 'weakness': return '🔥 弱点克服復習';
+    default: return '算国総合模試';
+  }
+};
+
 export default function App() {
-  // Auth & User States
+  // Auth & Student Profile States
   const [user, setUser] = useState(null);
-  const [userProfile, setUserProfile] = useState({ name: 'ゲスト生徒', avatar: '' });
+  const [studentName, setStudentName] = useState(() => {
+    try {
+      return localStorage.getItem('learn_daily_student_name') || 'ゲスト生徒';
+    } catch {
+      return 'ゲスト生徒';
+    }
+  });
   const [authError, setAuthError] = useState(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Parent Admin Auth States (admin / family123)
-  const [isParentAdmin, setIsParentAdmin] = useState(false);
+  // Admin Google Authentication States (Only peruqsidiq@gmail.com)
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
-  const [adminUsernameInput, setAdminUsernameInput] = useState('');
-  const [adminPasswordInput, setAdminPasswordInput] = useState('');
   const [adminAuthError, setAdminAuthError] = useState('');
+  const [pendingAdminOpen, setPendingAdminOpen] = useState(false);
+
+  const isParentAdmin = useMemo(() => {
+    return Boolean(
+      user &&
+      !user.isAnonymous &&
+      user.email &&
+      user.email.toLowerCase() === ADMIN_EMAIL
+    );
+  }, [user]);
 
   // Selected Child Filter & Historical Time Filter in Admin/History Mode
   const [adminSelectedChildName, setAdminSelectedChildName] = useState('ALL');
-  const [historyPeriodFilter, setHistoryPeriodFilter] = useState('ALL'); // 'ALL', 'THIS_MONTH', 'LAST_MONTH', 'LAST_30', 'CUSTOM_DATE'
+  const [historyPeriodFilter, setHistoryPeriodFilter] = useState('ALL');
   const [customSearchDate, setCustomSearchDate] = useState('');
 
   // Navigation & Grade States
@@ -689,12 +726,24 @@ export default function App() {
   const [selectedSubject, setSelectedSubject] = useState('math');
   const [selectedGrade, setSelectedGrade] = useState('grade2');
   
+  // Exam Countdown Timer Mode States
+  const [isTimerEnabled, setIsTimerEnabled] = useState(true);
+  const [timeLeftSec, setTimeLeftSec] = useState(900);
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const [wasAutoSubmittedByTimeout, setWasAutoSubmittedByTimeout] = useState(false);
+
   // Quiz Runner States
   const [currentQuestions, setCurrentQuestions] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [userAnswers, setUserAnswers] = useState([]);
   const [quizStartTime, setQuizStartTime] = useState(null);
   const [selectedOption, setSelectedOption] = useState(null);
+
+  // Ref for safe timer auto-submit
+  const latestQuizStateRef = useRef({ userAnswers: [], currentIdx: 0, selectedOption: null });
+  useEffect(() => {
+    latestQuizStateRef.current = { userAnswers, currentIdx, selectedOption };
+  }, [userAnswers, currentIdx, selectedOption]);
 
   // Unified Family History Docs
   const [historyDocs, setHistoryDocs] = useState([]);
@@ -715,6 +764,39 @@ export default function App() {
       console.warn("Could not load local history:", e);
     }
   }, []);
+
+  // Extract Wrong Questions for Weakness Conquest Mode
+  const wrongQuestionsPool = useMemo(() => {
+    if (!historyDocs || historyDocs.length === 0) return [];
+
+    const relevantDocs = studentName !== 'ゲスト生徒'
+      ? historyDocs.filter(d => d.userDisplayName === studentName)
+      : historyDocs;
+
+    const docsToScan = relevantDocs.length > 0 ? relevantDocs : historyDocs;
+    const seenQuestions = new Set();
+    const collected = [];
+
+    docsToScan.forEach((docItem) => {
+      if (!Array.isArray(docItem.answeredBreakdown)) return;
+      docItem.answeredBreakdown.forEach((entry) => {
+        if (!entry.isCorrect && entry.question && Array.isArray(entry.options) && !seenQuestions.has(entry.question)) {
+          seenQuestions.add(entry.question);
+          collected.push({
+            id: entry.questionId || `weak_${collected.length}`,
+            category: `${entry.category || '復習'}（${docItem.gradeLabel || '過去問'}）`,
+            categoryName: entry.category || "思考力",
+            question: entry.question,
+            options: entry.options,
+            correctIndex: entry.correctIndex,
+            explanation: entry.explanation || "解説を確認して解き直しましょう。"
+          });
+        }
+      });
+    });
+
+    return collected;
+  }, [historyDocs, studentName]);
 
   // Compute Daily Streak
   const streakInfo = useMemo(() => {
@@ -751,9 +833,27 @@ export default function App() {
     return { streak, testedToday };
   }, [historyDocs, todayStr]);
 
-  // Auth Observer
+  // Auth Initialization & Observer (Handles Google Redirect & Popup Auth)
   useEffect(() => {
     const initAuth = async () => {
+      try {
+        const redirectRes = await getRedirectResult(auth);
+        if (redirectRes?.user) {
+          const email = redirectRes.user.email?.toLowerCase();
+          if (email === ADMIN_EMAIL) {
+            setShowAdminLoginModal(false);
+            setAdminAuthError('');
+            setActiveTab('admin');
+          } else {
+            setAdminAuthError(`ログイン中のアカウント（${redirectRes.user.email}）には管理者権限がありません。${ADMIN_EMAIL} でログインしてください。`);
+            setShowAdminLoginModal(true);
+          }
+          return;
+        }
+      } catch (err) {
+        console.warn("Redirect result notice:", err);
+      }
+
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
@@ -769,16 +869,33 @@ export default function App() {
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      if (currentUser) {
-        setUserProfile({
-          name: currentUser.displayName || (currentUser.isAnonymous ? 'ゲスト生徒' : '学習メンバー'),
-          avatar: currentUser.photoURL || ''
-        });
+      if (currentUser && !currentUser.isAnonymous) {
+        const email = currentUser.email?.toLowerCase();
+        if (email === ADMIN_EMAIL) {
+          setAdminAuthError('');
+          setShowAdminLoginModal(false);
+          if (pendingAdminOpen) {
+            setPendingAdminOpen(false);
+            setActiveTab('admin');
+          }
+        } else if (pendingAdminOpen) {
+          setPendingAdminOpen(false);
+          setAdminAuthError(`このアカウント（${currentUser.email}）には管理者権限がありません。${ADMIN_EMAIL} でログインしてください。`);
+          setShowAdminLoginModal(true);
+        }
       }
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [pendingAdminOpen]);
+
+  // Redirect away from admin tab if user logs out or switches to non-admin account
+  useEffect(() => {
+    if (activeTab === 'admin' && !isParentAdmin) {
+      setActiveTab('home');
+      setShowAdminLoginModal(true);
+    }
+  }, [activeTab, isParentAdmin]);
 
   // Sync Shared Family Results from Firestore
   useEffect(() => {
@@ -804,58 +921,141 @@ export default function App() {
     }
   }, []);
 
-  const handleGoogleSignIn = async () => {
+  // Quiz Timer Effect
+  useEffect(() => {
+    if (activeTab !== 'quiz' || currentQuestions.length === 0) return;
+
+    const intervalId = setInterval(() => {
+      setElapsedSec(prev => prev + 1);
+
+      if (isTimerEnabled) {
+        setTimeLeftSec(prev => {
+          if (prev <= 1) {
+            clearInterval(intervalId);
+            const { userAnswers: curAns, currentIdx: curIdx, selectedOption: curOpt } = latestQuizStateRef.current;
+            const finalized = [...curAns];
+            if (curOpt !== null) {
+              finalized[curIdx] = curOpt;
+            }
+            finishQuiz(finalized, true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [activeTab, isTimerEnabled, currentQuestions.length]);
+
+  // Google Login Handler (Used for Admin Verification & Account Switching)
+  const handleAdminGoogleSignIn = async () => {
     setIsLoggingIn(true);
-    setAuthError(null);
+    setAdminAuthError('');
+    setPendingAdminOpen(true);
+
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({
+      prompt: 'select_account',
+      login_hint: ADMIN_EMAIL
+    });
+
     try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      const signedInEmail = result.user?.email?.toLowerCase();
+      if (signedInEmail === ADMIN_EMAIL) {
+        setShowAdminLoginModal(false);
+        setAdminAuthError('');
+        setPendingAdminOpen(false);
+        setActiveTab('admin');
+      } else {
+        setPendingAdminOpen(false);
+        setAdminAuthError(
+          `ログインされたアカウント（${result.user?.email || '不明'}）には管理者権限がありません。必ず「${ADMIN_EMAIL}」を選択してログインしてください。`
+        );
+      }
     } catch (err) {
-      console.error("Login failed:", err);
-      setAuthError("Googleログインに失敗しました。下のボタンからお名前を直接入力して保存できます。");
+      console.error("Google Sign-In error:", err);
+      if (err.code === 'auth/popup-blocked') {
+        try {
+          await signInWithRedirect(auth, provider);
+          return;
+        } catch (redirectErr) {
+          console.error("Redirect Sign-In error:", redirectErr);
+        }
+      }
+      setPendingAdminOpen(false);
+      if (err.code === 'auth/unauthorized-domain') {
+        setAdminAuthError(
+          "現在のWebドメインがFirebaseで未承認です。Firebase Console の Authentication → 設定 → 承認済みドメイン に現在のURLを追加してください。"
+        );
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        setAdminAuthError("ログイン画面が閉じられました。もう一度ボタンを押してログインしてください。");
+      } else {
+        setAdminAuthError(`Googleログインに失敗しました（${err.code || 'エラー'}）。再度お試しください。`);
+      }
     } finally {
       setIsLoggingIn(false);
     }
   };
 
+  // Set Student Profile Name (for children on shared devices)
   const handleSetLocalProfileName = () => {
-    const name = prompt("お子様またはご家族の名前を入力してください:", userProfile.name);
+    const name = prompt("テストを受けるお子様のお名前を入力してください（例: お兄ちゃん、弟）:", studentName);
     if (name && name.trim()) {
-      setUserProfile(prev => ({ ...prev, name: name.trim() }));
+      const trimmed = name.trim();
+      setStudentName(trimmed);
+      try {
+        localStorage.setItem('learn_daily_student_name', trimmed);
+      } catch (e) {
+        console.warn("Could not save student name:", e);
+      }
       setAuthError(null);
     }
   };
 
-  const handleSignOut = async () => {
+  // Admin Sign Out Handler
+  const handleAdminLogout = async () => {
     try {
       await signOut(auth);
       await signInAnonymously(auth);
     } catch (err) {
       console.error("Signout error:", err);
     }
-  };
-
-  const handleAdminLoginSubmit = (e) => {
-    e.preventDefault();
-    if (adminUsernameInput.trim() === 'admin' && adminPasswordInput.trim() === 'family123') {
-      setIsParentAdmin(true);
-      setShowAdminLoginModal(false);
-      setAdminAuthError('');
-      setAdminUsernameInput('');
-      setAdminPasswordInput('');
-      setActiveTab('admin');
-    } else {
-      setAdminAuthError('ユーザー名またはパスワードが違います（初期設定: admin / family123）');
-    }
-  };
-
-  const handleAdminLogout = () => {
-    setIsParentAdmin(false);
     setActiveTab('home');
   };
 
+  // Handle clicking "保護者管理" button in Header
+  const handleAdminButtonClick = () => {
+    if (isParentAdmin) {
+      setActiveTab('admin');
+    } else {
+      if (user && !user.isAnonymous && user.email) {
+        setAdminAuthError(
+          `現在ログイン中のアカウント（${user.email}）では表示できません。管理者アカウント（${ADMIN_EMAIL}）でログインしてください。`
+        );
+      } else {
+        setAdminAuthError('');
+      }
+      setShowAdminLoginModal(true);
+    }
+  };
+
+  // Initialize timer duration based on question count
+  const initializeQuizSession = (questions, subjectKey) => {
+    setSelectedSubject(subjectKey);
+    setCurrentQuestions(questions);
+    setCurrentIdx(0);
+    setUserAnswers(new Array(questions.length).fill(null));
+    setSelectedOption(null);
+    setQuizStartTime(Date.now());
+    setElapsedSec(0);
+    setTimeLeftSec(questions.length * 90);
+    setWasAutoSubmittedByTimeout(false);
+    setActiveTab('quiz');
+  };
+
   const startQuiz = (subject) => {
-    setSelectedSubject(subject);
     let questions = [];
 
     if (selectedGrade === 'grade2') {
@@ -870,27 +1070,20 @@ export default function App() {
       else questions = generateDailyDynamicQuestions('grade5');
     }
 
-    setCurrentQuestions(questions);
-    setCurrentIdx(0);
-    setUserAnswers(new Array(questions.length).fill(null));
-    setSelectedOption(null);
-    setQuizStartTime(Date.now());
-    setActiveTab('quiz');
+    initializeQuizSession(questions, subject);
   };
 
   const startDailyTest = async () => {
     setIsGeneratingAI(true);
-    setSelectedSubject('daily');
-    
     const questions = await fetchAIDailyQuestions('combined', selectedGrade);
-    
-    setCurrentQuestions(questions);
-    setCurrentIdx(0);
-    setUserAnswers(new Array(questions.length).fill(null));
-    setSelectedOption(null);
-    setQuizStartTime(Date.now());
     setIsGeneratingAI(false);
-    setActiveTab('quiz');
+    initializeQuizSession(questions, 'daily');
+  };
+
+  const startWeaknessQuiz = () => {
+    if (wrongQuestionsPool.length === 0) return;
+    const selectedWeakQuestions = shuffleArray(wrongQuestionsPool).slice(0, 10);
+    initializeQuizSession(selectedWeakQuestions, 'weakness');
   };
 
   const handleOptionSelect = (optionIndex) => {
@@ -908,11 +1101,12 @@ export default function App() {
       setCurrentIdx(currentIdx + 1);
       setSelectedOption(updatedAnswers[currentIdx + 1]);
     } else {
-      finishQuiz(updatedAnswers);
+      finishQuiz(updatedAnswers, false);
     }
   };
 
-  const finishQuiz = async (finalAnswers) => {
+  const finishQuiz = async (finalAnswers, isTimeout = false) => {
+    setWasAutoSubmittedByTimeout(isTimeout);
     const durationSec = Math.round((Date.now() - (quizStartTime || Date.now())) / 1000);
     const now = new Date();
     const dateIsoStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -922,7 +1116,7 @@ export default function App() {
 
     const answeredBreakdown = currentQuestions.map((q, idx) => {
       const uAns = finalAnswers[idx];
-      const isCorrect = uAns === q.correctIndex;
+      const isCorrect = uAns !== null && uAns === q.correctIndex;
       if (isCorrect) correctCount++;
 
       const cat = q.categoryName || "思考力";
@@ -959,13 +1153,13 @@ export default function App() {
       totalQuestions: totalQ,
       percentage: percentage,
       durationSec: durationSec,
+      wasTimeout: isTimeout,
       categoryStats: categoryStats,
       answeredBreakdown: answeredBreakdown,
-      userDisplayName: userProfile.name,
+      userDisplayName: studentName,
       userEmail: user?.email || 'ゲスト'
     };
 
-    // Save to Firestore shared family results
     try {
       const familyResultsRef = collection(db, 'artifacts', appId, 'family_results');
       await addDoc(familyResultsRef, recordData);
@@ -973,7 +1167,6 @@ export default function App() {
       console.warn("Could not save to Firestore, falling back to local storage:", e);
     }
 
-    // Save to Local Storage Backup
     try {
       const newHistory = [recordData, ...historyDocs];
       setHistoryDocs(newHistory);
@@ -986,16 +1179,14 @@ export default function App() {
     setActiveTab('results');
   };
 
-  // Filtered dataset for History and Admin view (by Child & Date/Period)
+  // Filtered dataset for History and Admin view
   const filteredHistoryDocs = useMemo(() => {
     let list = [...historyDocs];
 
-    // Child name filter
     if (adminSelectedChildName !== 'ALL') {
       list = list.filter(item => item.userDisplayName === adminSelectedChildName);
     }
 
-    // Period / Date filter
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
@@ -1016,7 +1207,6 @@ export default function App() {
     return list;
   }, [historyDocs, adminSelectedChildName, historyPeriodFilter, customSearchDate]);
 
-  // Extract unique child names
   const childNamesList = useMemo(() => {
     const names = new Set(historyDocs.map(d => d.userDisplayName).filter(Boolean));
     return Array.from(names);
@@ -1040,7 +1230,7 @@ export default function App() {
     return days;
   }, [filteredHistoryDocs]);
 
-  // Radar Chart Data for Filtered Selection
+  // Radar Chart Data
   const radarData = useMemo(() => {
     const totals = {};
     filteredHistoryDocs.forEach(doc => {
@@ -1061,7 +1251,7 @@ export default function App() {
     }));
   }, [filteredHistoryDocs]);
 
-  // Score Trend Data for Filtered Selection
+  // Score Trend Data
   const scoreTrendData = useMemo(() => {
     return [...filteredHistoryDocs]
       .reverse()
@@ -1090,157 +1280,170 @@ export default function App() {
       
       {/* Top Header Navigation */}
       <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div 
-            onClick={() => setActiveTab('home')}
-            className="flex items-center gap-2.5 cursor-pointer select-none"
-          >
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-400 to-amber-200 text-slate-950 flex items-center justify-center font-black shadow-md">
-              四
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2.5 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+          
+          {/* Top Row: Compact Title & Mobile Student Name */}
+          <div className="flex items-center justify-between gap-2">
+            <div 
+              onClick={() => setActiveTab('home')}
+              className="flex items-center gap-2 cursor-pointer select-none min-w-0"
+            >
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-400 to-amber-200 text-slate-950 flex items-center justify-center font-black text-sm shadow shrink-0">
+                四
+              </div>
+              <div className="truncate">
+                <h1 className="font-black text-sm sm:text-base leading-tight whitespace-nowrap">
+                  四谷大塚 入塾テスト対策
+                </h1>
+                <p className="hidden lg:block text-[10px] text-amber-300 font-medium whitespace-nowrap">
+                  直前ラストスパート・タイマー＆弱点克服対応
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="font-black text-sm sm:text-base leading-tight">四谷大塚 入塾テスト対策</h1>
-              <p className="text-[10px] text-amber-300 font-medium">ご家族学習・多言語＆学年対応モデル</p>
+
+            {/* Mobile Student Name Button */}
+            <div className="flex items-center gap-1.5 md:hidden shrink-0">
+              <button
+                onClick={handleSetLocalProfileName}
+                title="受検するお子様の名前を変更"
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold px-2.5 py-1.5 rounded-lg text-xs transition flex items-center gap-1 max-w-[125px]"
+              >
+                <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="truncate">{studentName}</span>
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              onClick={() => setActiveTab('home')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                activeTab === 'home' ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800'
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>ホーム</span>
-            </button>
+          {/* Navigation Tabs & Desktop Profile */}
+          <div className="flex items-center justify-between md:justify-end gap-1.5 sm:gap-2 pt-2 md:pt-0 border-t border-slate-800 md:border-t-0">
+            <nav className="grid grid-cols-3 md:flex items-center gap-1.5 w-full md:w-auto">
+              <button
+                onClick={() => setActiveTab('home')}
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 whitespace-nowrap ${
+                  activeTab === 'home' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-800/60 md:bg-transparent text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                <span>ホーム</span>
+              </button>
 
-            <button
-              onClick={() => setActiveTab('history')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                activeTab === 'history' ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800'
-              }`}
-            >
-              <BarChart2 className="w-3.5 h-3.5" />
-              <span>成績・分析</span>
-            </button>
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 whitespace-nowrap ${
+                  activeTab === 'history' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-800/60 md:bg-transparent text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <BarChart2 className="w-3.5 h-3.5 shrink-0" />
+                <span>成績・分析</span>
+              </button>
 
-            {/* Parent Admin Access Button */}
-            <button
-              onClick={() => {
-                if (isParentAdmin) setActiveTab('admin');
-                else setShowAdminLoginModal(true);
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition flex items-center gap-1.5 border ${
-                activeTab === 'admin'
-                  ? 'bg-amber-400 text-slate-950 border-amber-300'
-                  : 'bg-slate-800 text-amber-300 border-amber-400/40 hover:bg-slate-700'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-              <span>{isParentAdmin ? '保護者管理画面' : '🔒 保護者管理'}</span>
-            </button>
-
-            {/* Profile / Google Auth Button */}
-            {user && !user.isAnonymous ? (
-              <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-                {userProfile.avatar ? (
-                  <img src={userProfile.avatar} alt="" className="w-7 h-7 rounded-full border border-amber-400" />
+              {/* Parent Admin Access Button (Restricted to peruqsidiq@gmail.com) */}
+              <button
+                onClick={handleAdminButtonClick}
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-extrabold transition flex items-center justify-center gap-1 border whitespace-nowrap ${
+                  activeTab === 'admin'
+                    ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-sm'
+                    : isParentAdmin
+                    ? 'bg-emerald-900/60 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900'
+                    : 'bg-slate-800 text-amber-300 border-amber-400/40 hover:bg-slate-700'
+                }`}
+              >
+                {isParentAdmin ? (
+                  <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
                 ) : (
-                  <div className="w-7 h-7 rounded-full bg-amber-400 text-slate-900 flex items-center justify-center font-bold text-xs">
-                    {userProfile.name.charAt(0)}
-                  </div>
+                  <Lock className="w-3.5 h-3.5 shrink-0" />
                 )}
+                <span>保護者管理</span>
+              </button>
+            </nav>
+
+            {/* Desktop Student Name & Admin Status */}
+            <div className="hidden md:flex items-center gap-2 pl-2 border-l border-slate-800 shrink-0">
+              <button
+                onClick={handleSetLocalProfileName}
+                title="受検するお子様の名前を変更"
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold px-2.5 py-1.5 rounded-lg text-xs transition flex items-center gap-1 whitespace-nowrap"
+              >
+                <User className="w-3.5 h-3.5 text-amber-400" />
+                <span>{studentName}</span>
+              </button>
+
+              {isParentAdmin && (
                 <button
-                  onClick={handleSignOut}
-                  title="ログアウト"
+                  onClick={handleAdminLogout}
+                  title={`管理者ログアウト (${user?.email})`}
                   className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
-              </div>
-            ) : (
-              <button
-                onClick={handleSetLocalProfileName}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold px-2.5 py-1.5 rounded-lg text-xs transition flex items-center gap-1"
-              >
-                <User className="w-3.5 h-3.5 text-amber-400" />
-                <span>{userProfile.name}</span>
-              </button>
-            )}
+              )}
+            </div>
           </div>
+
         </div>
       </header>
 
-      {/* Auth Error Toast if any */}
+      {/* Auth Error Toast */}
       {authError && (
         <div className="bg-rose-100 border border-rose-300 text-rose-800 text-xs p-3 text-center flex items-center justify-center gap-2">
           <AlertCircle className="w-4 h-4 text-rose-600" />
           <span>{authError}</span>
-          <button onClick={handleSetLocalProfileName} className="underline font-bold bg-rose-200 px-2 py-0.5 rounded">
-            名前を入力して保存
-          </button>
           <button onClick={() => setAuthError(null)} className="ml-2 font-bold text-slate-500">✕</button>
         </div>
       )}
 
-      {/* Parent Admin Login Modal */}
+      {/* Parent Admin Google Account Verification Modal */}
       {showAdminLoginModal && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200">
             <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mb-4 font-black">
-              <Lock className="w-6 h-6" />
+              <ShieldCheck className="w-7 h-7" />
             </div>
-            <h3 className="text-xl font-black text-slate-900 mb-1">保護者専用管理ログイン</h3>
-            <p className="text-xs text-slate-500 mb-6">
-              固定のユーザー名とパスワードを入力して保護者ダッシュボードへ入ります。
+            <h3 className="text-xl font-black text-slate-900 mb-1">保護者専用管理画面（管理者認証）</h3>
+            <p className="text-xs text-slate-600 leading-relaxed mb-4">
+              この画面は管理者アカウント（<strong className="text-slate-900">{ADMIN_EMAIL}</strong>）でGoogleログインしている場合のみ表示されます。
             </p>
 
-            <form onSubmit={handleAdminLoginSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">ユーザー名 (初期設定: admin)</label>
-                <input
-                  type="text"
-                  value={adminUsernameInput}
-                  onChange={(e) => setAdminUsernameInput(e.target.value)}
-                  placeholder="admin"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-amber-500 outline-none"
-                />
+            {user && !user.isAnonymous && user.email && (
+              <div className="mb-4 p-3 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-700">
+                現在のログイン状態: <strong className="text-slate-900">{user.email}</strong>
               </div>
+            )}
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">パスワード (初期設定: family123)</label>
-                <input
-                  type="password"
-                  value={adminPasswordInput}
-                  onChange={(e) => setAdminPasswordInput(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-amber-500 outline-none"
-                />
+            {adminAuthError && (
+              <div className="mb-4 text-xs text-rose-700 font-bold bg-rose-50 p-3 rounded-xl border border-rose-200 leading-relaxed">
+                {adminAuthError}
               </div>
+            )}
 
-              {adminAuthError && (
-                <div className="text-xs text-rose-600 font-bold bg-rose-50 p-2.5 rounded-xl border border-rose-200">
-                  {adminAuthError}
-                </div>
-              )}
+            <div className="space-y-3 pt-1">
+              <button
+                type="button"
+                onClick={handleAdminGoogleSignIn}
+                disabled={isLoggingIn}
+                className="w-full py-3 rounded-xl font-extrabold text-xs sm:text-sm bg-slate-900 hover:bg-slate-800 text-white shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                <LogIn className="w-4 h-4 text-amber-400" />
+                <span>
+                  {isLoggingIn
+                    ? 'Google認証中...'
+                    : user && !user.isAnonymous
+                    ? '別のGoogleアカウントでログインし直す'
+                    : 'Googleでログインして管理画面を開く'}
+                </span>
+              </button>
 
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAdminLoginModal(false)}
-                  className="w-1/2 py-2.5 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 transition"
-                >
-                  キャンセル
-                </button>
-                <button
-                  type="submit"
-                  className="w-1/2 py-2.5 rounded-xl font-extrabold text-xs bg-amber-400 hover:bg-amber-300 text-slate-950 shadow transition"
-                >
-                  ログイン
-                </button>
-              </div>
-            </form>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAdminLoginModal(false);
+                  setAdminAuthError('');
+                }}
+                className="w-full py-2.5 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 transition"
+              >
+                閉じる
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1248,36 +1451,60 @@ export default function App() {
       {/* ================= MAIN CONTENT AREA ================= */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6">
         
-        {/* TAB 1: HOME (GRADE SELECTOR & TEST SELECTION) */}
+        {/* TAB 1: HOME (GRADE SELECTOR, TIMER SETTING, WEAKNESS MODE & TEST SELECTION) */}
         {activeTab === 'home' && (
           <div className="space-y-6">
             
-            {/* GRADE SELECTION BAR */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between flex-wrap gap-3">
-              <div className="flex items-center gap-2">
-                <User className="w-5 h-5 text-indigo-600" />
-                <span className="font-bold text-sm text-slate-800">お子様の対象学年を選択:</span>
-              </div>
-              <div className="flex items-center gap-2">
+            {/* GRADE & EXAM TIMER SETTINGS BAR */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between flex-wrap gap-4">
+              {/* Grade Switcher */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 mr-1">
+                  <User className="w-5 h-5 text-indigo-600" />
+                  <span className="font-bold text-sm text-slate-800">対象学年:</span>
+                </div>
                 <button
                   onClick={() => setSelectedGrade('grade2')}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-black transition ${
+                  className={`px-4 py-2 rounded-xl text-xs font-black transition ${
                     selectedGrade === 'grade2'
                       ? 'bg-amber-400 text-slate-950 shadow-sm ring-2 ring-amber-300'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  🌱 小学2年生（低学年向け）
+                  🌱 小学2年生
                 </button>
                 <button
                   onClick={() => setSelectedGrade('grade5')}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-black transition ${
+                  className={`px-4 py-2 rounded-xl text-xs font-black transition ${
                     selectedGrade === 'grade5'
                       ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-300'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  🚀 小学5年生（高学年向け）
+                  🚀 小学5年生
+                </button>
+              </div>
+
+              {/* Exam Countdown Timer Toggle */}
+              <div className="flex items-center gap-3 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200">
+                <div className="flex items-center gap-1.5">
+                  <Timer className={`w-4 h-4 ${isTimerEnabled ? 'text-rose-600' : 'text-slate-400'}`} />
+                  <div>
+                    <div className="text-xs font-extrabold text-slate-800">本番制限時間タイマー</div>
+                    <div className="text-[10px] text-slate-500">
+                      {isTimerEnabled ? 'ON (10問=15分 / 20問=30分)' : 'OFF (時間無制限でじっくり)'}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsTimerEnabled(!isTimerEnabled)}
+                  className={`w-12 h-6 rounded-full transition-colors p-0.5 flex items-center ${
+                    isTimerEnabled ? 'bg-rose-600 justify-end' : 'bg-slate-300 justify-start'
+                  }`}
+                  aria-label="タイマー切り替え"
+                >
+                  <span className="w-5 h-5 rounded-full bg-white shadow block" />
                 </button>
               </div>
             </div>
@@ -1300,10 +1527,10 @@ export default function App() {
                   </h2>
 
                   <p className="text-amber-100 text-xs sm:text-sm leading-relaxed">
-                    AIが日付に合わせた日替わり問題（算数10問・国語10問）を自動生成します。毎日解くことで思考力が身につきます！
+                    AIが日付に合わせた日替わり問題（算数10問・国語10問）を自動生成します。本番さながらのタイマー意識で実力を出し切りましょう！
                   </p>
 
-                  <div className="flex items-center gap-4 pt-2">
+                  <div className="flex items-center gap-4 pt-2 flex-wrap">
                     <div className="flex items-center gap-2 bg-black/20 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20">
                       <Flame className="w-6 h-6 text-amber-300 animate-bounce" />
                       <div>
@@ -1347,6 +1574,53 @@ export default function App() {
               </div>
             </div>
 
+            {/* WEAKNESS CONQUEST MODE BANNER */}
+            <div className="bg-gradient-to-r from-rose-50 via-amber-50 to-orange-50 border-2 border-rose-200 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-rose-600 text-white flex items-center justify-center flex-shrink-0 shadow-md">
+                  <Target className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-black text-slate-900 text-base">
+                      🔥 弱点克服モード（今まで間違えた問題だけ復習）
+                    </h3>
+                    <span className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full ${
+                      wrongQuestionsPool.length > 0
+                        ? 'bg-rose-600 text-white'
+                        : 'bg-emerald-600 text-white'
+                    }`}>
+                      {wrongQuestionsPool.length > 0
+                        ? `弱点ストック: ${wrongQuestionsPool.length} 問`
+                        : '弱点ゼロ達成中 🎉'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    {wrongQuestionsPool.length > 0
+                      ? '過去のテストで間違えた問題だけを自動ピックアップ！本番前に苦手をつぶして得点力を底上げしましょう（最大10問出題）。'
+                      : 'まだ間違えた問題のストックがありません。テストを受けると間違えた問題が自動的にここへ集まります！'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={startWeaknessQuiz}
+                disabled={wrongQuestionsPool.length === 0}
+                className={`w-full sm:w-auto flex-shrink-0 px-6 py-3 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-2 shadow ${
+                  wrongQuestionsPool.length > 0
+                    ? 'bg-rose-600 hover:bg-rose-700 text-white cursor-pointer'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>
+                  {wrongQuestionsPool.length > 0
+                    ? `間違えた問題（${Math.min(10, wrongQuestionsPool.length)}問）に挑戦`
+                    : '復習問題なし'}
+                </span>
+              </button>
+            </div>
+
             {/* Test Selection Cards */}
             <div>
               <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -1364,7 +1638,7 @@ export default function App() {
                         <Calculator className="w-6 h-6" />
                       </div>
                       <span className="bg-blue-50 text-blue-700 font-semibold text-xs px-2.5 py-1 rounded-full border border-blue-200">
-                        算数 10問 / 約15分
+                        算数 10問 / 15分
                       </span>
                     </div>
                     <h4 className="font-extrabold text-slate-900 text-lg mb-1 group-hover:text-blue-600 transition">
@@ -1393,7 +1667,7 @@ export default function App() {
                         <BookOpen className="w-6 h-6" />
                       </div>
                       <span className="bg-rose-50 text-rose-700 font-semibold text-xs px-2.5 py-1 rounded-full border border-rose-200">
-                        国語 10問 / 約15分
+                        国語 10問 / 15分
                       </span>
                     </div>
                     <h4 className="font-extrabold text-slate-900 text-lg mb-1 group-hover:text-rose-600 transition">
@@ -1422,7 +1696,7 @@ export default function App() {
                         <Sparkles className="w-6 h-6" />
                       </div>
                       <span className="bg-emerald-50 text-emerald-700 font-semibold text-xs px-2.5 py-1 rounded-full border border-emerald-200">
-                        ウイグル語 10問 / 約15分
+                        ウイグル語 10問 / 15分
                       </span>
                     </div>
                     <h4 className="font-extrabold text-slate-900 text-lg mb-1 group-hover:text-emerald-600 transition">
@@ -1452,7 +1726,7 @@ export default function App() {
                         <BrainCircuit className="w-6 h-6" />
                       </div>
                       <span className="bg-amber-400/20 text-amber-300 font-semibold text-xs px-2.5 py-1 rounded-full border border-amber-400/30">
-                        全20問 / 算10 + 国10
+                        全20問 / 30分
                       </span>
                     </div>
                     <h4 className="font-extrabold text-white text-lg mb-1">
@@ -1477,25 +1751,49 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: QUIZ RUNNER */}
+        {/* TAB 2: QUIZ RUNNER WITH EXAM TIMER */}
         {activeTab === 'quiz' && currentQuestions.length > 0 && (
           <div className="max-w-2xl mx-auto space-y-6">
             
-            {/* Quiz Top Progress */}
-            <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center justify-between">
-              <div>
+            {/* Quiz Top Progress & Countdown Timer */}
+            <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-100">
-                  {selectedGrade === 'grade2' ? '2年生' : '5年生'} / {selectedSubject === 'math' ? '算数' : selectedSubject === 'japanese' ? '国語' : selectedSubject === 'uyghur' ? 'ウイグル語' : selectedSubject === 'daily' ? '本日のAI模試' : '算国総合'}
+                  {selectedSubject === 'weakness' ? '🔥 弱点克服復習' : `${selectedGrade === 'grade2' ? '2年生' : '5年生'} / ${getSubjectLabel(selectedSubject)}`}
                 </span>
-                <span className="ml-2 text-xs font-semibold text-slate-500">
+                <span className="text-xs font-semibold text-slate-600">
                   第 {currentIdx + 1} / {currentQuestions.length} 問
                 </span>
               </div>
-              <div className="w-1/3 bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                <div
-                  className="bg-indigo-600 h-full rounded-full transition-all duration-300"
-                  style={{ width: `${((currentIdx + 1) / currentQuestions.length) * 100}%` }}
-                ></div>
+
+              {/* Timer Badge */}
+              <div className="flex items-center gap-3">
+                {isTimerEnabled ? (
+                  <div
+                    className={`px-3 py-1.5 rounded-xl font-black text-xs flex items-center gap-1.5 border ${
+                      timeLeftSec <= 60
+                        ? 'bg-rose-600 text-white border-rose-700 animate-pulse'
+                        : timeLeftSec <= 180
+                        ? 'bg-amber-100 text-amber-900 border-amber-300'
+                        : 'bg-slate-900 text-amber-300 border-slate-700'
+                    }`}
+                  >
+                    <Timer className="w-4 h-4" />
+                    <span>残り {formatSeconds(timeLeftSec)}</span>
+                  </div>
+                ) : (
+                  <div className="px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 bg-slate-100 text-slate-600 border border-slate-200">
+                    <Timer className="w-3.5 h-3.5 text-slate-400" />
+                    <span>経過 {formatSeconds(elapsedSec)}</span>
+                  </div>
+                )}
+
+                <div className="w-20 sm:w-28 bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="bg-indigo-600 h-full rounded-full transition-all duration-300"
+                    style={{ width: `${((currentIdx + 1) / currentQuestions.length) * 100}%` }}
+                  ></div>
+                </div>
               </div>
             </div>
 
@@ -1555,10 +1853,20 @@ export default function App() {
         {activeTab === 'results' && selectedHistoryItem && (
           <div className="max-w-3xl mx-auto space-y-6">
             
+            {/* Timeout Notice Banner if Auto-Submitted */}
+            {(wasAutoSubmittedByTimeout || selectedHistoryItem.wasTimeout) && (
+              <div className="bg-amber-100 border-2 border-amber-400 text-amber-950 p-4 rounded-2xl text-xs font-bold flex items-center gap-3 shadow-sm">
+                <Timer className="w-6 h-6 text-amber-600 flex-shrink-0" />
+                <div>
+                  制限時間が終了したため、自動的に提出されました！本番ではわからない問題を飛ばして時間内に解き切る練習を続けましょう。
+                </div>
+              </div>
+            )}
+
             {/* Score Overview Header */}
             <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-md text-center relative overflow-hidden">
               <div className="inline-block bg-indigo-50 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full mb-2">
-                テスト完了 ({selectedHistoryItem.gradeLabel || '標準'} - {selectedHistoryItem.dateStr})
+                {getSubjectLabel(selectedHistoryItem.subject)} ({selectedHistoryItem.gradeLabel || '標準'} - {selectedHistoryItem.dateStr})
               </div>
               <h2 className="text-2xl font-black text-slate-900 mb-4">
                 採点結果発表
@@ -1578,6 +1886,17 @@ export default function App() {
                     {selectedHistoryItem.percentage}%
                   </div>
                 </div>
+                {selectedHistoryItem.durationSec !== undefined && (
+                  <>
+                    <div className="h-10 w-px bg-slate-200"></div>
+                    <div>
+                      <div className="text-xs text-slate-500 font-semibold">解答時間</div>
+                      <div className="text-xl font-black text-slate-700">
+                        {formatSeconds(selectedHistoryItem.durationSec)}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Target Class Evaluation */}
@@ -1589,13 +1908,22 @@ export default function App() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-center gap-3 mt-6">
+              <div className="flex items-center justify-center gap-3 mt-6 flex-wrap">
                 <button
                   onClick={() => setActiveTab('home')}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow"
                 >
                   トップ画面へ戻る
                 </button>
+                {wrongQuestionsPool.length > 0 && (
+                  <button
+                    onClick={startWeaknessQuiz}
+                    className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition shadow flex items-center gap-1.5"
+                  >
+                    <Target className="w-3.5 h-3.5" />
+                    <span>弱点克服モードで解き直す</span>
+                  </button>
+                )}
                 <button
                   onClick={() => setActiveTab('history')}
                   className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-6 py-2.5 rounded-xl text-xs transition"
@@ -1643,7 +1971,7 @@ export default function App() {
                     <div>
                       <span className="text-slate-500">あなたの回答: </span>
                       <span className={item.isCorrect ? 'font-bold text-emerald-700' : 'font-bold text-rose-600'}>
-                        {item.options[item.userAnswerIndex] || '未回答'}
+                        {item.userAnswerIndex !== null && item.options[item.userAnswerIndex] ? item.options[item.userAnswerIndex] : '未回答（時間切れ）'}
                       </span>
                     </div>
                     {!item.isCorrect && (
@@ -1676,7 +2004,7 @@ export default function App() {
                   学習実績・成績ダッシュボード
                 </h2>
                 <p className="text-xs text-slate-500">
-                  {userProfile.name} さんのテスト履歴と全期間・月別の分析結果です。
+                  {studentName} さんのテスト履歴と全期間・月別の分析結果です。
                 </p>
               </div>
 
@@ -1813,12 +2141,12 @@ export default function App() {
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-bold text-sm text-slate-900">
-                            【{item.gradeLabel || '標準'}】{item.subject === 'math' ? '算数テスト' : item.subject === 'japanese' ? '国語テスト' : item.subject === 'uyghur' ? 'ウイグル語テスト' : item.subject === 'daily' ? '本日のAI模試' : '算国総合模試'}
+                            【{item.gradeLabel || '標準'}】{getSubjectLabel(item.subject)}
                           </span>
                           <span className="text-[11px] text-slate-400">{item.dateStr}</span>
                         </div>
                         <div className="text-xs text-slate-500">
-                          正解: {item.score} / {item.totalQuestions} 問 ({item.durationSec ? `${item.durationSec}秒` : ''})
+                          正解: {item.score} / {item.totalQuestions} 問 ({item.durationSec ? `${formatSeconds(item.durationSec)}` : ''})
                         </div>
                       </div>
 
@@ -1842,7 +2170,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 5: PARENT ADMIN DASHBOARD */}
+        {/* TAB 5: PARENT ADMIN DASHBOARD (Strictly for peruqsidiq@gmail.com) */}
         {activeTab === 'admin' && isParentAdmin && (
           <div className="space-y-6">
             
@@ -1853,8 +2181,8 @@ export default function App() {
                   <ShieldCheck className="w-7 h-7" />
                 </div>
                 <div>
-                  <div className="inline-block bg-amber-400/20 text-amber-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-amber-400/30">
-                    保護者管理モード認証済み
+                  <div className="inline-block bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-400/30 mb-1">
+                    管理者認証済み: {user?.email}
                   </div>
                   <h2 className="text-xl font-black text-white">家族全員の学習分析・歴史管理</h2>
                 </div>
@@ -1862,9 +2190,10 @@ export default function App() {
 
               <button
                 onClick={handleAdminLogout}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-4 py-2 rounded-xl text-xs transition border border-slate-700"
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-4 py-2 rounded-xl text-xs transition border border-slate-700 flex items-center gap-1.5"
               >
-                保護者モードを終了
+                <LogOut className="w-3.5 h-3.5" />
+                <span>管理者ログアウト</span>
               </button>
             </div>
 
@@ -2053,7 +2382,7 @@ export default function App() {
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-extrabold text-sm text-slate-900">
-                            {item.userDisplayName || '生徒'} - 【{item.gradeLabel || '標準'}】{item.subject === 'math' ? '算数テスト' : item.subject === 'japanese' ? '国語テスト' : item.subject === 'uyghur' ? 'ウイグル語' : item.subject === 'daily' ? '本日のAI模試' : '算国総合模試'}
+                            {item.userDisplayName || '生徒'} - 【{item.gradeLabel || '標準'}】{getSubjectLabel(item.subject)}
                           </span>
                           <span className="text-[11px] text-slate-400">{item.dateStr}</span>
                         </div>
@@ -2081,9 +2410,10 @@ export default function App() {
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 text-xs py-6 border-t border-slate-800 text-center">
         <div className="max-w-6xl mx-auto px-4">
-          四谷大塚 入塾テスト実戦対策・学習実績保存システム (ご家族運用・多言語＆学年対応)
+          四谷大塚 入塾テスト実戦対策・学習実績保存システム (ご家族運用・タイマー＆弱点克服対応)
         </div>
       </footer>
     </div>
   );
 }
+```
