@@ -1,618 +1,447 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { AppConfig } from './config/AppConfig.js';
-import { QuizUtils } from './utils/QuizUtils.js';
-import { QuestionEngine } from './data/QuestionEngine.js';
-import { firebaseService } from './services/FirebaseService.js';
-import { LoginGateView, EditNameModal, AppHeader } from './components/CommonUI.jsx';
-import { HomeView, QuizRunnerView, ResultsView, HistoryView, AdminView } from './components/PageViews.jsx';
+// src/App.jsx
+// メインアプリケーションコントローラー（PageViews.jsx / QuestionEngine.js / FirebaseService.js 統合版）
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { AppConfig } from './config/AppConfig';
+import { QuestionEngine } from './data/QuestionEngine';
+import { FirebaseService } from './services/FirebaseService';
+import {
+  LoginGateView,
+  EditNameModal,
+  AppHeader
+} from './components/CommonUI';
+import {
+  HomeView,
+  QuizRunnerView,
+  ResultsView,
+  HistoryView,
+  AdminView
+} from './components/PageViews';
+
+const DEFAULT_TIME_LIMIT = 600; // 10分（600秒）
 
 export default function App() {
+  // --- 認証・ユーザー状態 ---
   const [user, setUser] = useState(null);
-  const [customDisplayName, setCustomDisplayName] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [loginError, setLoginError] = useState('');
-  const [isEditingName, setIsEditingName] = useState(false);
+  const [customDisplayName, setCustomDisplayName] = useState('');
+  const [isEditNameOpen, setIsEditNameOpen] = useState(false);
 
-  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState(() => {
+  // --- 画面遷移・学年・APIキー状態 ---
+  const [view, setView] = useState('home'); // 'home' | 'quiz' | 'results' | 'history' | 'admin'
+  const [grade, setGrade] = useState('2'); // '2' | '5'
+  const [customApiKey, setCustomApiKey] = useState(() => {
     try {
-      return localStorage.getItem(AppConfig.LOCAL_GEMINI_KEY) || '';
+      return typeof localStorage !== 'undefined'
+        ? localStorage.getItem('gemini_api_key') || ''
+        : '';
     } catch {
       return '';
     }
   });
-  const [apiKeySavedToast, setApiKeySavedToast] = useState(false);
 
-  const [activeTab, setActiveTab] = useState('home');
-  const [selectedSubject, setSelectedSubject] = useState('math');
-  const [selectedGrade, setSelectedGrade] = useState('grade2');
-  const [sessionAttemptCount, setSessionAttemptCount] = useState(0);
-  const [adminSelectedChildName, setAdminSelectedChildName] = useState('ALL');
-  const [historyPeriodFilter, setHistoryPeriodFilter] = useState('ALL');
-  const [customSearchDate, setCustomSearchDate] = useState('');
+  // --- テスト実行状態 ---
+  const [subject, setSubject] = useState('math');
+  const [questions, setQuestions] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [timeLeft, setTimeLeft] = useState(DEFAULT_TIME_LIMIT);
+  const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
+  const [latestResult, setLatestResult] = useState(null);
 
-  const [isTimerEnabled, setIsTimerEnabled] = useState(true);
-  const [timeLeftSec, setTimeLeftSec] = useState(900);
-  const [elapsedSec, setElapsedSec] = useState(0);
-  const [wasAutoSubmittedByTimeout, setWasAutoSubmittedByTimeout] = useState(false);
-  const [timedOutTrigger, setTimedOutTrigger] = useState(false);
-  const [currentQuestions, setCurrentQuestions] = useState([]);
-  const [currentIdx, setCurrentIdx] = useState(0);
-  const [userAnswers, setUserAnswers] = useState([]);
-  const [quizStartTime, setQuizStartTime] = useState(null);
-  const [selectedOption, setSelectedOption] = useState(null);
-  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  // --- 学習履歴状態 ---
+  const [history, setHistory] = useState([]);
 
-  const [historyDocs, setHistoryDocs] = useState([]);
-  const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
+  // タイマー終了時の二重送信防止用Ref
+  const finishingRef = useRef(false);
+  const answersRef = useRef(answers);
+  answersRef.current = answers;
 
-  const latestQuizStateRef = useRef({ userAnswers: [], currentIdx: 0, selectedOption: null });
-  useEffect(() => {
-    latestQuizStateRef.current = { userAnswers, currentIdx, selectedOption };
-  }, [userAnswers, currentIdx, selectedOption]);
+  const adminEmail = AppConfig?.ADMIN_EMAIL || 'peruqsidiq@gmail.com';
+  const isAdmin = Boolean(user?.email && user.email === adminEmail);
 
-  const isParentAdmin = useMemo(() => {
-    return Boolean(
-      user &&
-      !user.isAnonymous &&
-      user.email &&
-      user.email.toLowerCase() === AppConfig.ADMIN_EMAIL
-    );
-  }, [user]);
+  // -------------------------------------------------------------------------
+  // 1. Firebase 認証監視と初期データ読み込み
+  // -------------------------------------------------------------------------
+  const loadUserRecords = useCallback(async (uid) => {
+    if (!uid) return;
+    try {
+      if (FirebaseService && typeof FirebaseService.getUserRecords === 'function') {
+        const recs = await FirebaseService.getUserRecords(uid);
+        if (Array.isArray(recs)) {
+          setHistory(recs);
+          return;
+        }
+      }
+      if (FirebaseService && typeof FirebaseService.fetchRecords === 'function') {
+        const recs = await FirebaseService.fetchRecords(uid);
+        if (Array.isArray(recs)) {
+          setHistory(recs);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Firestoreからの履歴取得をローカルバックアップへフォールバック:', err);
+    }
 
-  const currentUserDisplayName = useMemo(() => {
-    if (!user) return '';
-    if (customDisplayName && customDisplayName.trim()) return customDisplayName.trim();
-    if (user.displayName && user.displayName.trim()) return user.displayName.trim();
-    if (user.email) return user.email.split('@')[0];
-    return '学習メンバー';
-  }, [user, customDisplayName]);
-
-  useEffect(() => {
-    const unsubscribe = firebaseService.subscribeAuth((currentUser) => {
-      setUser(currentUser);
-      setCustomDisplayName(currentUser?.displayName || '');
-      setAuthLoading(false);
-    });
-    return () => unsubscribe();
+    // ローカルストレージのバックアップ読み込み
+    try {
+      const raw = localStorage.getItem(`learndaily_history_${uid}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setHistory(parsed);
+      }
+    } catch {
+      // ignore
+    }
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'admin' && !isParentAdmin) {
-      setActiveTab('home');
-    }
-  }, [activeTab, isParentAdmin]);
+    let unsubscribe = null;
 
-  useEffect(() => {
-    if (!user || user.isAnonymous) {
-      setHistoryDocs([]);
-      return;
-    }
-    const unsubscribe = firebaseService.subscribeFamilyResults(
-      (items) => setHistoryDocs(items),
-      (fallbackItems) => setHistoryDocs(fallbackItems)
-    );
-    return () => unsubscribe();
-  }, [user]);
-
-  const myHistoryDocs = useMemo(() => {
-    if (!user) return [];
-    if (isParentAdmin) return historyDocs;
-    return historyDocs.filter(
-      d => d.userUid === user.uid || (user.email && d.userEmail === user.email)
-    );
-  }, [historyDocs, user, isParentAdmin]);
-
-  const wrongQuestionsPool = useMemo(() => {
-    if (!myHistoryDocs || myHistoryDocs.length === 0) return [];
-    const seenQuestions = new Set();
-    const collected = [];
-
-    myHistoryDocs.forEach((docItem) => {
-      if (!Array.isArray(docItem.answeredBreakdown)) return;
-      docItem.answeredBreakdown.forEach((entry) => {
-        if (!entry.isCorrect && entry.question && Array.isArray(entry.options) && !seenQuestions.has(entry.question)) {
-          seenQuestions.add(entry.question);
-          collected.push({
-            id: entry.questionId || `weak_${collected.length}`,
-            category: `${entry.category || '復習'}（${docItem.gradeLabel || '過去問'}）`,
-            categoryName: entry.category || "思考力",
-            question: entry.question,
-            options: entry.options,
-            correctIndex: entry.correctIndex,
-            explanation: entry.explanation || "解説を確認して解き直しましょう。"
-          });
+    if (FirebaseService && typeof FirebaseService.onAuthChange === 'function') {
+      unsubscribe = FirebaseService.onAuthChange((currentUser) => {
+        setUser(currentUser || null);
+        if (currentUser) {
+          const savedName =
+            localStorage.getItem(`learndaily_name_${currentUser.uid}`) ||
+            currentUser.displayName ||
+            '';
+          setCustomDisplayName(savedName);
+          loadUserRecords(currentUser.uid);
+        } else {
+          setHistory([]);
+          setView('home');
         }
+        setAuthLoading(false);
       });
-    });
-
-    return collected;
-  }, [myHistoryDocs]);
-
-  const streakInfo = useMemo(() => {
-    const todayStr = QuizUtils.getTodayDateString();
-    if (!myHistoryDocs || myHistoryDocs.length === 0) return { streak: 0, testedToday: false };
-
-    const dates = Array.from(new Set(
-      myHistoryDocs.map(item => {
-        if (item.dateIso) return item.dateIso;
-        if (!item.timestamp) return null;
-        const d = new Date(item.timestamp);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      }).filter(Boolean)
-    )).sort().reverse();
-
-    const testedToday = dates.includes(todayStr);
-    let streak = 0;
-    let checkDate = new Date();
-    if (!testedToday) checkDate.setDate(checkDate.getDate() - 1);
-
-    while (true) {
-      const dStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
-      if (dates.includes(dStr)) {
-        streak++;
-        checkDate.setDate(checkDate.getDate() - 1);
-      } else {
-        break;
-      }
+    } else {
+      setAuthLoading(false);
     }
 
-    return { streak, testedToday };
-  }, [myHistoryDocs]);
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [loadUserRecords]);
 
-  useEffect(() => {
-    if (activeTab !== 'quiz' || currentQuestions.length === 0) return;
+  // -------------------------------------------------------------------------
+  // 2. テスト開始ハンドラ（英語・算数・国語・総合すべてに対応）
+  // -------------------------------------------------------------------------
+  const handleStartQuiz = useCallback(
+    async (selectedSubject) => {
+      const targetSubject = selectedSubject || 'math';
+      setIsLoadingQuiz(true);
+      finishingRef.current = false;
 
-    const intervalId = setInterval(() => {
-      setElapsedSec(prev => prev + 1);
-      if (isTimerEnabled) {
-        setTimeLeftSec(prev => {
-          if (prev <= 1) {
-            clearInterval(intervalId);
-            setTimedOutTrigger(true);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }
-    }, 1000);
+      try {
+        const generatedQuestions = await QuestionEngine.generateQuiz(
+          grade,
+          targetSubject,
+          customApiKey
+        );
 
-    return () => clearInterval(intervalId);
-  }, [activeTab, isTimerEnabled, currentQuestions.length]);
-
-  useEffect(() => {
-    if (!timedOutTrigger || activeTab !== 'quiz') return;
-    setTimedOutTrigger(false);
-    const { userAnswers: curAns, currentIdx: curIdx, selectedOption: curOpt } = latestQuizStateRef.current;
-    const finalized = [...curAns];
-    if (curOpt !== null) finalized[curIdx] = curOpt;
-    finishQuiz(finalized, true);
-  }, [timedOutTrigger, activeTab]);
-
-  const handleGoogleLogin = async () => {
-    setIsLoggingIn(true);
-    setLoginError('');
-    try {
-      await firebaseService.loginWithGoogle();
-    } catch (err) {
-      if (err.code === 'auth/unauthorized-domain') {
-        setLoginError("現在のWebドメインがFirebaseで未承認です。Firebase Console の Authentication → 設定 → 承認済みドメイン に現在のURLを追加してください。");
-      } else if (err.code === 'auth/popup-closed-by-user') {
-        setLoginError("ログイン画面が閉じられました。もう一度ボタンを押してログインしてください。");
-      } else {
-        setLoginError(`Googleログインに失敗しました（${err.code || 'エラー'}）。`);
-      }
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
-  const handleEmailAuthSubmit = async ({ authMode, emailInput, passwordInput, childNameInput }) => {
-    if (!emailInput.trim() || !passwordInput.trim()) {
-      setLoginError("メールアドレスとパスワードを入力してください。");
-      return;
-    }
-
-    setIsLoggingIn(true);
-    setLoginError('');
-
-    try {
-      if (authMode === 'register') {
-        if (!childNameInput.trim()) {
-          setLoginError("お子様のお名前（表示名）を入力してください。");
-          setIsLoggingIn(false);
+        if (!generatedQuestions || generatedQuestions.length === 0) {
+          alert('問題の読み込みに失敗しました。もう一度お試しください。');
           return;
         }
-        const registeredUser = await firebaseService.registerWithEmail(emailInput, passwordInput, childNameInput);
-        setUser(registeredUser);
-        setCustomDisplayName(childNameInput.trim());
-      } else {
-        await firebaseService.loginWithEmail(emailInput, passwordInput);
-      }
-    } catch (err) {
-      if (err.code === 'auth/operation-not-allowed') {
-        setLoginError("Firebase側でメール/パスワード認証がまだ有効化されていません。「Googleアカウントでログイン」をご利用ください。");
-      } else if (err.code === 'auth/email-already-in-use') {
-        setLoginError("このメールアドレスは既に登録されています。「ログイン」タブからログインしてください。");
-      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
-        setLoginError("メールアドレスまたはパスワードが正しくありません。");
-      } else if (err.code === 'auth/weak-password') {
-        setLoginError("パスワードは6文字以上で設定してください。");
-      } else {
-        setLoginError(`認証エラーが発生しました（${err.code}）。`);
-      }
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
 
-  const handleSaveDisplayName = async (newName) => {
-    if (!user) return;
-    try {
-      await firebaseService.updateUserDisplayName(user, newName);
-      setCustomDisplayName(newName.trim());
-    } catch (err) {
-      console.error("Failed to update display name:", err);
-    } finally {
-      setIsEditingName(false);
+        setSubject(targetSubject);
+        setQuestions(generatedQuestions);
+        setCurrentIndex(0);
+        setAnswers({});
+        setTimeLeft(DEFAULT_TIME_LIMIT);
+        setLatestResult(null);
+        setView('quiz');
+      } catch (error) {
+        console.error('テスト開始エラー:', error);
+        alert('問題の準備中にエラーが発生しました。');
+      } finally {
+        setIsLoadingQuiz(false);
+      }
+    },
+    [grade, customApiKey]
+  );
+
+  // -------------------------------------------------------------------------
+  // 3. 弱点克服モード開始ハンドラ
+  // -------------------------------------------------------------------------
+  const handleStartWeaknessQuiz = useCallback(() => {
+    const wrongPool = [];
+    history.forEach((rec) => {
+      if (Array.isArray(rec.wrongQuestions)) {
+        rec.wrongQuestions.forEach((wq) => {
+          if (wq && wq.question && Array.isArray(wq.choices)) {
+            wrongPool.push(wq);
+          }
+        });
+      }
+    });
+
+    if (wrongPool.length === 0) {
+      handleStartQuiz('mixed');
+      return;
     }
+
+    // 重複を除去して最大10問抽出
+    const uniqueMap = new Map();
+    wrongPool.forEach((q) => uniqueMap.set(q.question, q));
+    const uniqueQuestions = Array.from(uniqueMap.values()).slice(0, 10);
+
+    finishingRef.current = false;
+    setSubject('mixed');
+    setQuestions(uniqueQuestions);
+    setCurrentIndex(0);
+    setAnswers({});
+    setTimeLeft(DEFAULT_TIME_LIMIT);
+    setLatestResult(null);
+    setView('quiz');
+  }, [history, handleStartQuiz]);
+
+  // -------------------------------------------------------------------------
+  // 4. 回答選択＆テスト完了（採点・Firestore保存）ハンドラ
+  // -------------------------------------------------------------------------
+  const handleSelectAnswer = useCallback((questionIdx, choice) => {
+    setAnswers((prev) => ({
+      ...prev,
+      [questionIdx]: choice
+    }));
+  }, []);
+
+  const handleFinishQuiz = useCallback(
+    async (submittedAnswers) => {
+      if (finishingRef.current) return;
+      finishingRef.current = true;
+
+      const finalAnswers = submittedAnswers || answersRef.current || {};
+      const total = questions.length || 10;
+      let score = 0;
+      const wrongQuestions = [];
+
+      questions.forEach((q, idx) => {
+        if (finalAnswers[idx] === q.answer) {
+          score += 1;
+        } else {
+          wrongQuestions.push(q);
+        }
+      });
+
+      const timeSpent = Math.max(1, DEFAULT_TIME_LIMIT - timeLeft);
+      const displayName =
+        customDisplayName || user?.displayName || user?.email?.split('@')[0] || 'メンバー';
+
+      const recordPayload = {
+        uid: user?.uid || 'local',
+        userName: displayName,
+        userEmail: user?.email || '',
+        grade: subject === 'english' ? 'common' : String(grade),
+        subject,
+        score,
+        total,
+        timeSpent,
+        date: new Date().toISOString(),
+        wrongQuestions
+      };
+
+      const fullResult = {
+        ...recordPayload,
+        questions,
+        answers: finalAnswers
+      };
+
+      setLatestResult(fullResult);
+      setView('results');
+
+      // 履歴ステートとローカルストレージを即時更新
+      const nextHistory = [{ id: `local_${Date.now()}`, ...recordPayload }, ...history];
+      setHistory(nextHistory);
+
+      if (user?.uid) {
+        try {
+          localStorage.setItem(`learndaily_history_${user.uid}`, JSON.stringify(nextHistory));
+        } catch {
+          // ignore
+        }
+
+        try {
+          if (FirebaseService && typeof FirebaseService.saveRecord === 'function') {
+            await FirebaseService.saveRecord(user.uid, recordPayload);
+          } else if (FirebaseService && typeof FirebaseService.addRecord === 'function') {
+            await FirebaseService.addRecord(user.uid, recordPayload);
+          }
+        } catch (err) {
+          console.warn('Firestoreへの成績保存エラー（ローカルには保存済み）:', err);
+        }
+      }
+    },
+    [questions, timeLeft, customDisplayName, user, subject, grade, history]
+  );
+
+  // -------------------------------------------------------------------------
+  // 5. カウントダウンタイマー制御
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (view !== 'quiz') return;
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          handleFinishQuiz(answersRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [view, handleFinishQuiz]);
+
+  // -------------------------------------------------------------------------
+  // 6. 表示名変更・ログアウトハンドラ
+  // -------------------------------------------------------------------------
+  const handleSaveDisplayName = async (newName) => {
+    const trimmed = (newName || '').trim();
+    if (!trimmed) return;
+
+    setCustomDisplayName(trimmed);
+    if (user?.uid) {
+      try {
+        localStorage.setItem(`learndaily_name_${user.uid}`, trimmed);
+      } catch {
+        // ignore
+      }
+      if (FirebaseService && typeof FirebaseService.updateUserDisplayName === 'function') {
+        await FirebaseService.updateUserDisplayName(trimmed);
+      }
+    }
+    setIsEditNameOpen(false);
   };
 
   const handleLogout = async () => {
-    try {
-      await firebaseService.logout();
-      setActiveTab('home');
-    } catch (err) {
-      console.error("Logout error:", err);
+    if (FirebaseService && typeof FirebaseService.logout === 'function') {
+      await FirebaseService.logout();
     }
+    setUser(null);
+    setView('home');
   };
 
-  const handleSaveGeminiApiKey = () => {
-    try {
-      localStorage.setItem(AppConfig.LOCAL_GEMINI_KEY, geminiApiKeyInput.trim());
-      setApiKeySavedToast(true);
-      setTimeout(() => setApiKeySavedToast(false), 3000);
-    } catch {}
-  };
-
-  const initializeQuizSession = (questions, subjectKey) => {
-    setSelectedSubject(subjectKey);
-    setCurrentQuestions(questions);
-    setCurrentIdx(0);
-    setUserAnswers(new Array(questions.length).fill(null));
-    setSelectedOption(null);
-    setQuizStartTime(Date.now());
-    setElapsedSec(0);
-    setTimeLeftSec(questions.length * 90);
-    setWasAutoSubmittedByTimeout(false);
-    setTimedOutTrigger(false);
-    setActiveTab('quiz');
-  };
-
-  const startSubjectQuiz = (subject) => {
-    if (!user) return;
-    const nextAttempt = sessionAttemptCount + 1;
-    setSessionAttemptCount(nextAttempt);
-    const questions = QuestionEngine.getSubjectQuestions(subject, selectedGrade, nextAttempt);
-    initializeQuizSession(questions, subject);
-  };
-
-  const startDailyTest = async () => {
-    if (!user) return;
-    const nextAttempt = sessionAttemptCount + 1;
-    setSessionAttemptCount(nextAttempt);
-    setIsGeneratingAI(true);
-    const questions = await QuestionEngine.fetchDailyQuestions(selectedGrade, nextAttempt);
-    setIsGeneratingAI(false);
-    initializeQuizSession(questions, 'daily');
-  };
-
-  const startWeaknessQuiz = () => {
-    if (!user || wrongQuestionsPool.length === 0) return;
-    const selectedWeak = QuizUtils.shuffleArray(wrongQuestionsPool)
-      .slice(0, 10)
-      .map(QuizUtils.randomizeQuestionOptions);
-    initializeQuizSession(selectedWeak, 'weakness');
-  };
-
-  const handleNextQuestion = () => {
-    if (selectedOption === null) return;
-    const updatedAnswers = [...userAnswers];
-    updatedAnswers[currentIdx] = selectedOption;
-    setUserAnswers(updatedAnswers);
-
-    if (currentIdx + 1 < currentQuestions.length) {
-      setCurrentIdx(currentIdx + 1);
-      setSelectedOption(updatedAnswers[currentIdx + 1]);
-    } else {
-      finishQuiz(updatedAnswers, false);
-    }
-  };
-
-  const finishQuiz = async (finalAnswers, isTimeout = false) => {
-    setWasAutoSubmittedByTimeout(isTimeout);
-    const durationSec = Math.round((Date.now() - (quizStartTime || Date.now())) / 1000);
-    const now = new Date();
-    const dateIsoStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-
-    let correctCount = 0;
-    const categoryStats = {};
-
-    const answeredBreakdown = currentQuestions.map((q, idx) => {
-      const uAns = finalAnswers[idx];
-      const isCorrect = uAns !== null && uAns === q.correctIndex;
-      if (isCorrect) correctCount++;
-
-      const cat = q.categoryName || "思考力";
-      if (!categoryStats[cat]) categoryStats[cat] = { correct: 0, total: 0 };
-      categoryStats[cat].total += 1;
-      if (isCorrect) categoryStats[cat].correct += 1;
-
-      return {
-        questionId: q.id,
-        question: q.question,
-        options: q.options,
-        userAnswerIndex: uAns,
-        correctIndex: q.correctIndex,
-        isCorrect: isCorrect,
-        category: cat,
-        explanation: q.explanation
-      };
-    });
-
-    const totalQ = currentQuestions.length;
-    const percentage = totalQ > 0 ? Math.round((correctCount / totalQ) * 100) : 0;
-
-    const recordData = {
-      timestamp: Date.now(),
-      dateIso: dateIsoStr,
-      year: now.getFullYear(),
-      month: now.getMonth() + 1,
-      day: now.getDate(),
-      dateStr: now.toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-      subject: selectedSubject,
-      grade: selectedGrade,
-      gradeLabel: selectedGrade === 'grade2' ? '小学2年生' : '小学5年生',
-      score: correctCount,
-      totalQuestions: totalQ,
-      percentage: percentage,
-      durationSec: durationSec,
-      wasTimeout: isTimeout,
-      categoryStats: categoryStats,
-      answeredBreakdown: answeredBreakdown,
-      userUid: user?.uid || '',
-      userDisplayName: currentUserDisplayName,
-      userEmail: user?.email || ''
-    };
-
-    await firebaseService.saveQuizResult(recordData);
-
-    try {
-      const newHistory = [recordData, ...historyDocs];
-      setHistoryDocs(newHistory);
-      localStorage.setItem(AppConfig.LOCAL_HISTORY_KEY, JSON.stringify(newHistory));
-    } catch {}
-
-    setSelectedHistoryItem(recordData);
-    setActiveTab('results');
-  };
-
-  const filteredHistoryDocs = useMemo(() => {
-    let list = activeTab === 'admin' ? [...historyDocs] : [...myHistoryDocs];
-
-    if (activeTab === 'admin' && adminSelectedChildName !== 'ALL') {
-      list = list.filter(item => item.userDisplayName === adminSelectedChildName);
-    }
-
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
-
-    if (historyPeriodFilter === 'THIS_MONTH') {
-      list = list.filter(item => item.year === currentYear && item.month === currentMonth);
-    } else if (historyPeriodFilter === 'LAST_MONTH') {
-      const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-      const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
-      list = list.filter(item => item.year === lastMonthYear && item.month === lastMonth);
-    } else if (historyPeriodFilter === 'LAST_30') {
-      const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-      list = list.filter(item => (item.timestamp || 0) >= thirtyDaysAgo);
-    } else if (historyPeriodFilter === 'CUSTOM_DATE' && customSearchDate) {
-      list = list.filter(item => item.dateIso === customSearchDate);
-    }
-
-    return list;
-  }, [activeTab, historyDocs, myHistoryDocs, adminSelectedChildName, historyPeriodFilter, customSearchDate]);
-
-  const childNamesList = useMemo(() => {
-    return Array.from(new Set(historyDocs.map(d => d.userDisplayName).filter(Boolean)));
-  }, [historyDocs]);
-
-  const calendar30Days = useMemo(() => {
-    const days = [];
-    const testedDates = new Set(filteredHistoryDocs.map(item => item.dateIso));
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      days.push({
-        iso,
-        dayNum: d.getDate(),
-        monthNum: d.getMonth() + 1,
-        isTested: testedDates.has(iso)
-      });
-    }
-    return days;
-  }, [filteredHistoryDocs]);
-
-  const radarData = useMemo(() => {
-    const totals = {};
-    filteredHistoryDocs.forEach(doc => {
-      if (!doc.categoryStats) return;
-      Object.entries(doc.categoryStats).forEach(([cat, val]) => {
-        if (!totals[cat]) totals[cat] = { correct: 0, total: 0 };
-        totals[cat].correct += val.correct;
-        totals[cat].total += val.total;
-      });
-    });
-
-    return AppConfig.RADAR_CATEGORIES.map(cat => ({
-      subject: cat,
-      score: totals[cat] && totals[cat].total > 0
-        ? Math.round((totals[cat].correct / totals[cat].total) * 100)
-        : 75
-    }));
-  }, [filteredHistoryDocs]);
-
-  const scoreTrendData = useMemo(() => {
-    return [...filteredHistoryDocs].reverse().map(item => ({
-      date: item.dateStr || '前',
-      score: item.percentage
-    }));
-  }, [filteredHistoryDocs]);
-
-  const averageScore = filteredHistoryDocs.length > 0
-    ? Math.round(filteredHistoryDocs.reduce((acc, curr) => acc + curr.percentage, 0) / filteredHistoryDocs.length)
-    : 0;
-
-  const currentRank = QuizUtils.getRankBadge(averageScore);
-
+  // -------------------------------------------------------------------------
+  // 7. 画面レンダリング
+  // -------------------------------------------------------------------------
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
-        <div className="w-12 h-12 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black text-xl mb-4 animate-bounce">
-          {AppConfig.APP_BADGE_CHAR}
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div className="w-12 h-12 rounded-2xl bg-amber-400 text-slate-900 font-black text-2xl flex items-center justify-center shadow-md mb-3 animate-bounce">
+          {AppConfig?.APP_ICON || '未'}
         </div>
-        <p className="text-sm font-bold text-slate-300">認証状態を確認しています...</p>
+        <p className="text-sm font-extrabold text-slate-700">
+          {AppConfig?.APP_TITLE || '未来を生き抜く 思考力トレーニング'} を起動中...
+        </p>
       </div>
     );
   }
 
-  if (!user || user.isAnonymous) {
-    return (
-      <LoginGateView
-        onGoogleLogin={handleGoogleLogin}
-        onEmailSubmit={handleEmailAuthSubmit}
-        isLoggingIn={isLoggingIn}
-        loginError={loginError}
-        setLoginError={setLoginError}
-      />
-    );
+  // 未ログイン時はログインゲート画面を表示
+  if (!user) {
+    return <LoginGateView onLoginSuccess={(loggedInUser) => setUser(loggedInUser)} />;
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col">
-      {isEditingName && (
-        <EditNameModal
-          currentName={currentUserDisplayName}
-          onSave={handleSaveDisplayName}
-          onCancel={() => setIsEditingName(false)}
-        />
-      )}
-
+    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-800">
+      {/* 共通ヘッダー */}
       <AppHeader
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        isParentAdmin={isParentAdmin}
-        displayName={currentUserDisplayName}
-        userEmail={user?.email}
-        onEditName={() => setIsEditingName(true)}
+        user={user}
+        customDisplayName={customDisplayName}
+        isAdmin={isAdmin}
+        currentView={view}
+        view={view}
+        setView={setView}
+        onNavigate={setView}
+        onOpenEditName={() => setIsEditNameOpen(true)}
         onLogout={handleLogout}
       />
 
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6">
-        {activeTab === 'home' && (
+      {/* メインコンテンツ領域 */}
+      <main className="flex-1 pb-12">
+        {view === 'home' && (
           <HomeView
-            selectedGrade={selectedGrade}
-            setSelectedGrade={setSelectedGrade}
-            isTimerEnabled={isTimerEnabled}
-            setIsTimerEnabled={setIsTimerEnabled}
-            displayName={currentUserDisplayName}
-            streakInfo={streakInfo}
-            isGeneratingAI={isGeneratingAI}
-            onStartDailyTest={startDailyTest}
-            wrongQuestionsCount={wrongQuestionsPool.length}
-            onStartWeaknessQuiz={startWeaknessQuiz}
-            onStartSubjectQuiz={startSubjectQuiz}
+            user={user}
+            customDisplayName={customDisplayName}
+            grade={grade}
+            setGrade={setGrade}
+            onStartQuiz={handleStartQuiz}
+            onStartWeaknessQuiz={handleStartWeaknessQuiz}
+            history={history}
+            isLoadingQuiz={isLoadingQuiz}
           />
         )}
 
-        {activeTab === 'quiz' && (
+        {view === 'quiz' && (
           <QuizRunnerView
-            currentQuestions={currentQuestions}
-            currentIdx={currentIdx}
-            selectedSubject={selectedSubject}
-            selectedGrade={selectedGrade}
-            isTimerEnabled={isTimerEnabled}
-            timeLeftSec={timeLeftSec}
-            elapsedSec={elapsedSec}
-            selectedOption={selectedOption}
-            onSelectOption={setSelectedOption}
-            onNextQuestion={handleNextQuestion}
+            questions={questions}
+            currentIndex={currentIndex}
+            setCurrentIndex={setCurrentIndex}
+            answers={answers}
+            onSelectAnswer={handleSelectAnswer}
+            onFinishQuiz={handleFinishQuiz}
+            onCancelQuiz={() => setView('home')}
+            onBackHome={() => setView('home')}
+            setView={setView}
+            timeLeft={timeLeft}
+            subject={subject}
+            grade={grade}
           />
         )}
 
-        {activeTab === 'results' && (
+        {view === 'results' && (
           <ResultsView
-            item={selectedHistoryItem}
-            wasAutoSubmittedByTimeout={wasAutoSubmittedByTimeout}
-            wrongQuestionsCount={wrongQuestionsPool.length}
-            onGoHome={() => setActiveTab('home')}
-            onStartWeaknessQuiz={startWeaknessQuiz}
-            onGoHistory={() => setActiveTab('history')}
+            result={latestResult}
+            questions={questions}
+            answers={answers}
+            subject={subject}
+            grade={grade}
+            onRetry={handleStartQuiz}
+            onStartQuiz={handleStartQuiz}
+            onBackHome={() => setView('home')}
+            setView={setView}
           />
         )}
 
-        {activeTab === 'history' && (
+        {view === 'history' && (
           <HistoryView
-            displayName={currentUserDisplayName}
-            currentRank={currentRank}
-            historyPeriodFilter={historyPeriodFilter}
-            setHistoryPeriodFilter={setHistoryPeriodFilter}
-            customSearchDate={customSearchDate}
-            setCustomSearchDate={setCustomSearchDate}
-            radarData={radarData}
-            scoreTrendData={scoreTrendData}
-            filteredHistoryDocs={filteredHistoryDocs}
-            onSelectHistoryItem={(item) => {
-              setSelectedHistoryItem(item);
-              setActiveTab('results');
-            }}
+            history={history}
+            onBackHome={() => setView('home')}
+            setView={setView}
           />
         )}
 
-        {activeTab === 'admin' && isParentAdmin && (
+        {view === 'admin' && (
           <AdminView
-            userEmail={user?.email}
-            onLogout={handleLogout}
-            geminiApiKeyInput={geminiApiKeyInput}
-            setGeminiApiKeyInput={setGeminiApiKeyInput}
-            onSaveGeminiApiKey={handleSaveGeminiApiKey}
-            apiKeySavedToast={apiKeySavedToast}
-            adminSelectedChildName={adminSelectedChildName}
-            setAdminSelectedChildName={setAdminSelectedChildName}
-            childNamesList={childNamesList}
-            historyPeriodFilter={historyPeriodFilter}
-            setHistoryPeriodFilter={setHistoryPeriodFilter}
-            customSearchDate={customSearchDate}
-            setCustomSearchDate={setCustomSearchDate}
-            calendar30Days={calendar30Days}
-            radarData={radarData}
-            scoreTrendData={scoreTrendData}
-            filteredHistoryDocs={filteredHistoryDocs}
-            onSelectHistoryItem={(item) => {
-              setSelectedHistoryItem(item);
-              setActiveTab('results');
-            }}
+            user={user}
+            isAdmin={isAdmin}
+            history={history}
+            customApiKey={customApiKey}
+            onSaveApiKey={setCustomApiKey}
+            onBackHome={() => setView('home')}
+            setView={setView}
           />
         )}
       </main>
 
-      <footer className="bg-slate-900 text-slate-400 text-xs py-6 border-t border-slate-800 text-center">
-        <div className="max-w-6xl mx-auto px-4">
-          {AppConfig.APP_TITLE}・家族学習システム (独立ファイル分割・モジュール版)
-        </div>
+      {/* フッター */}
+      <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400">
+        {AppConfig?.APP_TITLE || '未来を生き抜く 思考力トレーニング'} — LearnDaily
       </footer>
+
+      {/* 表示名変更モーダル */}
+      {isEditNameOpen && (
+        <EditNameModal
+          isOpen={isEditNameOpen}
+          currentName={customDisplayName || user?.displayName || ''}
+          onSave={handleSaveDisplayName}
+          onClose={() => setIsEditNameOpen(false)}
+        />
+      )}
     </div>
   );
 }
