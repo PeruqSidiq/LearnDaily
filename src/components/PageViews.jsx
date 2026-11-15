@@ -1,5 +1,5 @@
 // src/components/PageViews.jsx
-// 全5画面ビュー（ホーム・テスト実行・結果・学習履歴・保護者管理）音声読み上げ＆リスニング完全対応版
+// 全5画面ビュー（ホーム・テスト実行・結果・学習履歴・保護者管理[AI問題再作成対応]）
 
 import React, { useState, useMemo, useEffect } from 'react';
 import {
@@ -26,10 +26,13 @@ import {
   Check,
   Globe,
   Volume2,
-  Headphones
+  Headphones,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { AppConfig } from '../config/AppConfig';
 import { QuizUtils } from '../utils/QuizUtils';
+import { QuestionEngine } from '../data/QuestionEngine';
 
 // =========================================================================
 // 共通ヘルパー（音声読み上げ・英語判定・科目メタデータ・ステージ判定）
@@ -46,14 +49,12 @@ const speakEnglishText = (text, rate = 0.85) => {
   window.speechSynthesis.speak(utterance);
 };
 
-// 問題文から英語部分（アルファベットを含むフレーズ）を抽出
 const extractEnglishPhrase = (questionText) => {
   if (!questionText) return '';
   const matches = String(questionText).match(/[A-Za-z][A-Za-z0-9\s.,!?'"-]*[A-Za-z0-9.!?]/g);
   return matches ? matches.join(' ') : '';
 };
 
-// 選択肢が英語（アルファベット主体）かどうかを判定
 const isEnglishPhrase = (text) => {
   if (!text) return false;
   return /^[A-Za-z0-9\s.,!?'"()-]+$/.test(String(text).trim());
@@ -149,6 +150,7 @@ export function HomeView({
   isLoadingQuiz = false
 }) {
   const [startingSubject, setStartingSubject] = useState(null);
+  const customSets = useMemo(() => QuestionEngine.getAllCustomAiSets(), []);
 
   const handleGradeChange = (nextGrade) => {
     if (typeof setGrade === 'function') setGrade(nextGrade);
@@ -209,6 +211,11 @@ export function HomeView({
 
   const displayName =
     customDisplayName || user?.displayName || user?.email?.split('@')[0] || 'チャレンジャー';
+
+  const hasCustomSet = (subj) => {
+    const key = QuestionEngine.getCustomSetKey(grade, subj);
+    return Boolean(customSets[key]);
+  };
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
@@ -323,9 +330,16 @@ export function HomeView({
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-3">
-                <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
-                  小学{grade}年生
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
+                    小学{grade}年生
+                  </span>
+                  {hasCustomSet('math') && (
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-800">
+                      ✨AIカスタム適用中
+                    </span>
+                  )}
+                </div>
                 <span className="text-xs font-semibold text-slate-400">全10問・制限時間10分</span>
               </div>
               <h3 className="text-lg font-extrabold text-slate-800 mb-1">
@@ -350,9 +364,16 @@ export function HomeView({
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-3">
-                <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700">
-                  小学{grade}年生
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700">
+                    小学{grade}年生
+                  </span>
+                  {hasCustomSet('japanese') && (
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-800">
+                      ✨AIカスタム適用中
+                    </span>
+                  )}
+                </div>
                 <span className="text-xs font-semibold text-slate-400">全10問・制限時間10分</span>
               </div>
               <h3 className="text-lg font-extrabold text-slate-800 mb-1">
@@ -373,14 +394,21 @@ export function HomeView({
             </button>
           </div>
 
-          {/* 3. 英語（English）入門カード（全学年共通・音声＆リスニング対応） */}
+          {/* 3. 英語（English）入門カード */}
           <div className="bg-white rounded-2xl p-5 border-2 border-emerald-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-3">
-                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
-                  <Globe className="w-3.5 h-3.5" />
-                  全学年共通・音声付き
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                    <Globe className="w-3.5 h-3.5" />
+                    全学年共通・音声付き
+                  </span>
+                  {hasCustomSet('english') && (
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-800">
+                      ✨AIカスタム適用中
+                    </span>
+                  )}
+                </div>
                 <span className="text-xs font-semibold text-slate-400">全10問・制限時間10分</span>
               </div>
               <h3 className="text-lg font-extrabold text-slate-800 mb-1">
@@ -418,9 +446,16 @@ export function HomeView({
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-3">
-                <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700">
-                  小学{grade}年生
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700">
+                    小学{grade}年生
+                  </span>
+                  {hasCustomSet('mixed') && (
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-800">
+                      ✨AIカスタム適用中
+                    </span>
+                  )}
+                </div>
                 <span className="text-xs font-semibold text-slate-400">全10問・制限時間10分</span>
               </div>
               <h3 className="text-lg font-extrabold text-slate-800 mb-1">
@@ -488,7 +523,6 @@ export function QuizRunnerView({
     [currentQuestion]
   );
 
-  // リスニング問題が表示されたときに自動で1回発音＆問題切替時に音声を停止
   useEffect(() => {
     if (isListeningQuestion && currentQuestion?.audioText) {
       const timer = setTimeout(() => {
@@ -541,7 +575,6 @@ export function QuizRunnerView({
     if (typeof onSelectAnswer === 'function') onSelectAnswer(activeIndex, choice);
     if (typeof handleSelectAnswer === 'function') handleSelectAnswer(activeIndex, choice);
 
-    // 英語の選択肢を選んだ場合はその英語を発音、リスニング問題の場合は正解の英語を発音
     if (isEng && isEnglishPhrase(choice)) {
       speakEnglishText(choice, 0.85);
     } else if (isListeningQuestion && currentQuestion.audioText) {
@@ -636,7 +669,6 @@ export function QuizRunnerView({
             分野：{currentQuestion.category || '思考力'}
           </span>
 
-          {/* 通常問題で英語フレーズが含まれる場合の読み上げボタン */}
           {isEng && !isListeningQuestion && questionEnglishPart && (
             <button
               type="button"
@@ -676,7 +708,7 @@ export function QuizRunnerView({
           </div>
         )}
 
-        {/* 4択選択肢（選択ボタンと発音ボタンを独立配置し、回答後も聞き直し可能） */}
+        {/* 4択選択肢 */}
         <div className="space-y-3">
           {(currentQuestion.choices || []).map((choice, idx) => {
             const optionLetters = ['A', 'B', 'C', 'D'];
@@ -1261,7 +1293,7 @@ export function HistoryView({
 }
 
 // =========================================================================
-// 5. 保護者・管理者画面（AdminView）
+// 5. 保護者・管理者画面（AdminView - Gemini API問題再作成＆適用機能付き）
 // =========================================================================
 export function AdminView({
   user,
@@ -1280,6 +1312,18 @@ export function AdminView({
       (typeof localStorage !== 'undefined' ? localStorage.getItem('gemini_api_key') || '' : '')
   );
   const [savedNotice, setSavedNotice] = useState(false);
+
+  // --- AI問題再作成（ジェネレーター）用ステート ---
+  const [genSubject, setGenSubject] = useState('english');
+  const [genGrade, setGenGrade] = useState('2');
+  const [genTopic, setGenTopic] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [genError, setGenError] = useState('');
+  const [previewQuestions, setPreviewQuestions] = useState([]);
+  const [appliedNotice, setAppliedNotice] = useState('');
+  const [activeCustomSets, setActiveCustomSets] = useState(() =>
+    QuestionEngine.getAllCustomAiSets()
+  );
 
   const adminEmail = AppConfig?.ADMIN_EMAIL || 'peruqsidiq@gmail.com';
   const hasAdminAccess = isAdmin || user?.email === adminEmail;
@@ -1338,7 +1382,59 @@ export function AdminView({
     setTimeout(() => setSavedNotice(false), 3000);
   };
 
+  // --- Gemini APIで問題をAI再作成 ---
+  const handleRegenerateWithAi = async () => {
+    const effectiveKey =
+      apiKeyInput.trim() ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem('gemini_api_key') || '' : '');
+
+    if (!effectiveKey) {
+      setGenError('先に上の「Gemini APIキー設定」でAPIキーを入力・保存してください。');
+      return;
+    }
+
+    setGenError('');
+    setAppliedNotice('');
+    setIsGenerating(true);
+
+    try {
+      const generated = await QuestionEngine.fetchQuestionsFromGemini(
+        genGrade,
+        genSubject,
+        effectiveKey,
+        10,
+        genTopic
+      );
+      setPreviewQuestions(generated);
+    } catch (err) {
+      console.error('AI問題再作成エラー:', err);
+      setGenError(err?.message || 'Gemini APIによる問題作成に失敗しました。');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // --- 再作成した10問を本番テストへ適用（保存） ---
+  const handleApplyPreviewToTest = () => {
+    if (!previewQuestions || previewQuestions.length === 0) return;
+    QuestionEngine.saveCustomAiQuestions(genGrade, genSubject, previewQuestions);
+    setActiveCustomSets(QuestionEngine.getAllCustomAiSets());
+    const label = SUBJECT_META[genSubject]?.label || genSubject;
+    const targetGradeText = isEnglishSubject(genSubject) ? '全学年共通' : `小学${genGrade}年生`;
+    setAppliedNotice(
+      `「${label}（${targetGradeText}）」の本番テストに新しいAI問題10問を適用しました！`
+    );
+  };
+
+  // --- 適用中のカスタムAI問題を解除 ---
+  const handleRemoveCustomSet = (gradeVal, subjVal) => {
+    QuestionEngine.clearCustomAiQuestions(gradeVal, subjVal);
+    setActiveCustomSets(QuestionEngine.getAllCustomAiSets());
+    setAppliedNotice('カスタムAI問題を解除し、標準の自動出題に戻しました。');
+  };
+
   const combinedRecords = allRecords.length > 0 ? allRecords : history;
+  const customSetEntries = Object.entries(activeCustomSets);
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
@@ -1349,7 +1445,7 @@ export function AdminView({
             保護者・管理者ダッシュボード
           </div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-slate-800">
-            AI出題設定と学習管理
+            AI出題設定と問題再作成管理
           </h2>
         </div>
 
@@ -1363,14 +1459,14 @@ export function AdminView({
         </button>
       </div>
 
-      {/* Gemini APIキー設定カード */}
+      {/* 1. Gemini APIキー設定カード */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm mb-6">
         <h3 className="text-base font-extrabold text-slate-800 mb-2 flex items-center gap-2">
           <Key className="w-5 h-5 text-amber-500" />
-          Gemini APIキー設定（AI新作問題の自動生成）
+          Gemini APIキー設定
         </h3>
         <p className="text-sm text-slate-600 mb-4 leading-relaxed">
-          APIキーを設定すると、算数・国語・英語のすべてでAIが毎回新しい問題を自動作成します。未設定の場合でも内蔵問題エンジンで全機能が無料で動作します。
+          APIキーを登録すると、下の「AI問題ジェネレーター」からいつでも新しい問題セットを再作成できます。
         </p>
 
         <form onSubmit={handleSave} className="space-y-3">
@@ -1388,7 +1484,7 @@ export function AdminView({
               className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm rounded-xl transition flex items-center gap-2"
             >
               <Save className="w-4 h-4" />
-              設定を保存する
+              APIキーを保存する
             </button>
 
             {apiKeyInput && (
@@ -1405,14 +1501,219 @@ export function AdminView({
             {savedNotice && (
               <span className="inline-flex items-center gap-1 text-sm font-extrabold text-emerald-600">
                 <Check className="w-4 h-4" />
-                設定を保存しました！
+                APIキーを保存しました！
               </span>
             )}
           </div>
         </form>
       </div>
 
-      {/* 全体の学習実施サマリー */}
+      {/* 2. ★ 新規追加：Gemini API を使った問題AI再作成ジェネレーター */}
+      <div className="bg-white rounded-2xl p-6 border-2 border-indigo-200 shadow-sm mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h3 className="text-base sm:text-lg font-extrabold text-slate-800 flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-indigo-600" />
+            Gemini API で問題をAI再作成する
+          </h3>
+          <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-extrabold">
+            10問セット自動生成＆プレビュー
+          </span>
+        </div>
+
+        <p className="text-sm text-slate-600 mb-5 leading-relaxed">
+          科目とテーマを指定して、AIに新しい問題セット（10問）を作成させます。内容を確認してから「本番テストに適用」を押すと、お子様のテスト画面に反映されます。
+        </p>
+
+        {/* 科目・学年・テーマ選択フォーム */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-xs font-extrabold text-slate-600 mb-1.5">
+              ① 再作成する科目
+            </label>
+            <select
+              value={genSubject}
+              onChange={(e) => setGenSubject(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="english">英語（English）入門（通常7問＋リスニング3問）</option>
+              <option value="english_listening">英語リスニング集中（全10問音声聞き取り）</option>
+              <option value="math">算数・思考力トレーニング</option>
+              <option value="japanese">国語・読解＆ことばトレーニング</option>
+              <option value="mixed">総合思考力チャレンジ（算数＋国語）</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-extrabold text-slate-600 mb-1.5">
+              ② 対象学年
+            </label>
+            {isEnglishSubject(genSubject) ? (
+              <div className="w-full px-3.5 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-extrabold text-emerald-800">
+                全学年共通（2年生・5年生 共通問題）
+              </div>
+            ) : (
+              <select
+                value={genGrade}
+                onChange={(e) => setGenGrade(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="2">小学2年生向け</option>
+                <option value="5">小学5年生向け</option>
+              </select>
+            )}
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-xs font-extrabold text-slate-600 mb-1.5">
+            ③ 出題テーマ・こだわりリクエスト（任意）
+          </label>
+          <input
+            type="text"
+            value={genTopic}
+            onChange={(e) => setGenTopic(e.target.value)}
+            placeholder="例：動物と食べ物の英単語を中心に / 時計と図形の文章題を多めに"
+            className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleRegenerateWithAi}
+            disabled={isGenerating}
+            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-extrabold text-sm rounded-xl transition flex items-center gap-2 shadow-sm"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Gemini AIが10問を作成中...</span>
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4" />
+                <span>Gemini APIで問題を再作成する</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* エラー・完了メッセージ */}
+        {genError && (
+          <div className="mt-4 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{genError}</span>
+          </div>
+        )}
+
+        {appliedNotice && (
+          <div className="mt-4 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-extrabold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{appliedNotice}</span>
+          </div>
+        )}
+
+        {/* 現在本番テストに適用中のカスタムAIセット一覧 */}
+        {customSetEntries.length > 0 && (
+          <div className="mt-5 pt-5 border-t border-slate-100">
+            <h4 className="text-xs font-extrabold text-slate-600 mb-2.5">
+              現在、本番テストに優先適用中のAIカスタム問題セット：
+            </h4>
+            <div className="flex flex-wrap gap-2">
+              {customSetEntries.map(([key, info]) => {
+                const subjLabel = SUBJECT_META[info.subject]?.label || info.subject;
+                const gradeLabel = isEnglishSubject(info.subject)
+                  ? '全学年共通'
+                  : `${info.grade}年生`;
+                return (
+                  <div
+                    key={key}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-extrabold text-amber-900"
+                  >
+                    <span>
+                      ✨ {subjLabel}（{gradeLabel}）
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveCustomSet(info.grade, info.subject)}
+                      className="text-rose-600 hover:text-rose-800 underline ml-1"
+                    >
+                      解除
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 生成された問題のプレビュー一覧 */}
+        {previewQuestions.length > 0 && (
+          <div className="mt-6 pt-6 border-t border-slate-200">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <h4 className="text-sm sm:text-base font-extrabold text-slate-800">
+                作成された問題プレビュー（全 {previewQuestions.length} 問）
+              </h4>
+
+              <button
+                type="button"
+                onClick={handleApplyPreviewToTest}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-xl transition flex items-center gap-1.5 shadow-sm"
+              >
+                <Check className="w-4 h-4" />
+                この問題セットを本番テストに適用する
+              </button>
+            </div>
+
+            <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1">
+              {previewQuestions.map((q, idx) => (
+                <div
+                  key={q.id || idx}
+                  className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                    <span className="text-xs font-extrabold text-indigo-700">
+                      第 {idx + 1} 問・{q.category}
+                      {q.type === 'listening' ? '（リスニング問題）' : ''}
+                    </span>
+                    {q.audioText && (
+                      <button
+                        type="button"
+                        onClick={() => speakEnglishText(q.audioText, 0.85)}
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs font-extrabold"
+                      >
+                        <Volume2 className="w-3.5 h-3.5" />
+                        音声確認: {q.audioText}
+                      </button>
+                    )}
+                  </div>
+
+                  <p className="font-bold text-slate-800 mb-2">{q.question}</p>
+
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {(q.choices || []).map((c, cIdx) => (
+                      <span
+                        key={cIdx}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                          c === q.answer
+                            ? 'bg-emerald-100 border-emerald-400 text-emerald-900'
+                            : 'bg-white border-slate-200 text-slate-600'
+                        }`}
+                      >
+                        {c === q.answer ? `✓ ${c}` : c}
+                      </span>
+                    ))}
+                  </div>
+
+                  <p className="text-xs text-slate-500">解説：{q.explanation}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 3. 全体の学習実施サマリー */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
         <h3 className="text-base font-extrabold text-slate-800 mb-4">
           登録済み学習データ一覧（合計 {combinedRecords.length} 件）
