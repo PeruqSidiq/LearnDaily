@@ -224,7 +224,7 @@ export function AppHeader({
             className="flex items-center gap-2 cursor-pointer select-none min-w-0"
           >
             <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-400 to-amber-200 text-slate-950 flex items-center justify-center font-black text-sm shadow shrink-0">
-              {AppConfig.APP_ICON || '未'}
+              {AppConfig.APP_BADGE_CHAR || '未'}
             </div>
             <div className="truncate">
               <h1 className="font-black text-sm sm:text-base leading-tight whitespace-nowrap">
