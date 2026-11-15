@@ -1,5 +1,5 @@
 // src/App.jsx
-// LearnDaily メインアプリケーション（Firebase認証・Firestore履歴＆管理者APIキー同期・5画面統合）
+// LearnDaily メインアプリケーション（Firebase認証・1日1回日替わり共通問題・5画面統合）
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -64,7 +64,7 @@ const firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConf
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 
-// QuestionEngine へ Firestore インスタンスを登録（AIカスタム問題の全端末同期用）
+// QuestionEngine へ Firestore インスタンスを登録
 QuestionEngine.setFirestoreDb(db);
 
 const QUIZ_DURATION_SECONDS = AppConfig?.QUIZ_DURATION_SECONDS || 600;
@@ -111,7 +111,6 @@ export default function App() {
   const [timeLeft, setTimeLeft] = useState(QUIZ_DURATION_SECONDS);
   const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
   const [latestResult, setLatestResult] = useState(null);
-  const [seedOffset, setSeedOffset] = useState(0);
 
   // --- 学習履歴・管理者用全データ ---
   const [history, setHistory] = useState([]);
@@ -131,12 +130,10 @@ export default function App() {
   }, []);
 
   // =========================================================================
-  // 管理者専用：Firestore から Gemini API キーを自動読み込み
+  // Firestore から共有 Gemini API キーを読み込み（1日1回の初回自動生成用）
   // =========================================================================
-  const loadAdminGeminiApiKey = useCallback(async (currentUser) => {
-    if (!currentUser || currentUser.email !== ADMIN_EMAIL) {
-      return '';
-    }
+  const loadSharedGeminiApiKey = useCallback(async (currentUser) => {
+    if (!currentUser) return '';
 
     try {
       const configRef = doc(db, ADMIN_SETTINGS_COLLECTION, GEMINI_CONFIG_DOC);
@@ -200,7 +197,6 @@ export default function App() {
       merged.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
       setHistory(merged);
 
-      // 管理者アカウントの場合は全メンバーの学習記録も取得
       if (currentUser.email === ADMIN_EMAIL) {
         const allSnap = await getDocs(recordsCol);
         const allList = [];
@@ -243,7 +239,7 @@ export default function App() {
 
         await Promise.all([
           loadLearningHistory(firebaseUser),
-          loadAdminGeminiApiKey(firebaseUser)
+          loadSharedGeminiApiKey(firebaseUser)
         ]);
       } else {
         setHistory([]);
@@ -254,7 +250,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [loadLearningHistory, loadAdminGeminiApiKey]);
+  }, [loadLearningHistory, loadSharedGeminiApiKey]);
 
   // =========================================================================
   // テスト結果の集計・保存（手動完了＆タイムアップ共通）
@@ -310,7 +306,6 @@ export default function App() {
       setLatestResult(resultPayload);
       setView('results');
 
-      // ローカル履歴へ即時反映
       const updatedLocal = [resultPayload, ...history];
       setHistory(updatedLocal);
       if (user && typeof localStorage !== 'undefined') {
@@ -324,7 +319,6 @@ export default function App() {
         }
       }
 
-      // Firestore へ学習記録を永続保存
       if (user) {
         try {
           const { questions: _omitQ, answers: _omitA, ...firestoreRecord } = resultPayload;
@@ -362,7 +356,7 @@ export default function App() {
   }, [view, questions.length, answers, handleFinishQuiz]);
 
   // =========================================================================
-  // テスト開始ハンドラー
+  // テスト開始ハンドラー（1日1回作成・全ユーザー共通問題を取得）
   // =========================================================================
   const handleStartQuiz = async (selectedSubject) => {
     const targetSubj = selectedSubject || 'math';
@@ -370,14 +364,10 @@ export default function App() {
     finishLockRef.current = false;
 
     try {
-      const nextOffset = seedOffset + 1;
-      setSeedOffset(nextOffset);
-
       const generated = await QuestionEngine.generateQuiz(
         grade,
         targetSubj,
-        customApiKey,
-        nextOffset
+        customApiKey
       );
 
       setSubject(targetSubj);
@@ -419,7 +409,7 @@ export default function App() {
     }
 
     finishLockRef.current = false;
-    const normalized = QuestionEngine.normalizeQuestions(wrongPool, 'mixed', 10);
+    const normalized = QuestionEngine.normalizeQuestions(wrongPool, 'mixed', 10, false);
     setSubject('mixed');
     setQuestions(normalized);
     setCurrentIndex(0);
@@ -430,7 +420,7 @@ export default function App() {
   };
 
   // =========================================================================
-  // 選択肢クリック・テスト中断・APIキー（ローカル＆Firestore同期）・表示名保存
+  // 選択肢クリック・テスト中断・APIキー保存・表示名保存
   // =========================================================================
   const handleSelectAnswer = (qIndex, choice) => {
     setAnswers((prev) => ({
@@ -456,7 +446,6 @@ export default function App() {
       else localStorage.removeItem('gemini_api_key');
     }
 
-    // 管理者ログイン中の場合は Firestore の管理者専用ドキュメントにも同期保存
     if (user && user.email === ADMIN_EMAIL) {
       const configRef = doc(db, ADMIN_SETTINGS_COLLECTION, GEMINI_CONFIG_DOC);
       if (trimmed) {
