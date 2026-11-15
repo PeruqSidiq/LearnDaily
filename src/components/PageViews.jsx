@@ -1,7 +1,7 @@
 // src/components/PageViews.jsx
-// 全5画面ビュー（ホーム・テスト実行・結果・学習履歴・保護者管理）統合コンポーネント
+// 全5画面ビュー（ホーム・テスト実行・結果・学習履歴・保護者管理）音声読み上げ対応版
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   BookOpen,
   Play,
@@ -24,14 +24,34 @@ import {
   Flame,
   Target,
   Check,
-  Globe
+  Globe,
+  Volume2
 } from 'lucide-react';
 import { AppConfig } from '../config/AppConfig';
 import { QuizUtils } from '../utils/QuizUtils';
 
 // =========================================================================
-// 共通ヘルパー（AppConfig / QuizUtils の定義差異を吸収する安全ラッパー）
+// 共通ヘルパー（音声読み上げ・科目メタデータ・ランク判定）
 // =========================================================================
+const speakEnglishText = (text) => {
+  if (!text || typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    return;
+  }
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(String(text));
+  utterance.lang = 'en-US';
+  utterance.rate = 0.85; // 子どもが聞き取りやすい少しゆっくりめの速度
+  utterance.pitch = 1.0;
+  window.speechSynthesis.speak(utterance);
+};
+
+// 問題文から英語部分（アルファベットを含むフレーズ）を抽出するヘルパー
+const extractEnglishPhrase = (questionText) => {
+  if (!questionText) return '';
+  const matches = String(questionText).match(/[A-Za-z][A-Za-z0-9\s.,!?'"-]*[A-Za-z0-9.!?]/g);
+  return matches ? matches.join(' ') : '';
+};
+
 const SUBJECT_META = {
   math: {
     label: AppConfig?.SUBJECT_LABELS?.math || '算数・思考力',
@@ -39,7 +59,7 @@ const SUBJECT_META = {
     buttonClass: 'bg-blue-600 hover:bg-blue-700'
   },
   japanese: {
-    label: AppConfig?.SUBJECT_LABELS?.japanese || '国語・読解＆語彙',
+    label: AppConfig?.SUBJECT_LABELS?.japanese || '国語・読解＆ことば',
     badgeClass: 'bg-rose-100 text-rose-700',
     buttonClass: 'bg-rose-600 hover:bg-rose-700'
   },
@@ -248,7 +268,7 @@ export function HomeView({
         </div>
       </div>
 
-      {/* 弱点克服モードバナー（過去の誤答がある場合のみ表示） */}
+      {/* 弱点克服モードバナー */}
       {stats.wrongPoolCount > 0 && (
         <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 sm:p-5 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
@@ -322,7 +342,7 @@ export function HomeView({
                 <span className="text-xs font-semibold text-slate-400">全10問・制限時間10分</span>
               </div>
               <h3 className="text-lg font-extrabold text-slate-800 mb-1">
-                国語・読解＆語彙トレーニング
+                国語・読解＆ことばトレーニング
               </h3>
               <p className="text-sm text-slate-600 mb-4">
                 言葉の意味・漢字・文のつながり・文章読解力をバランスよく伸ばします。
@@ -339,13 +359,13 @@ export function HomeView({
             </button>
           </div>
 
-          {/* 3. 英語（English）入門カード（全学年共通） */}
+          {/* 3. 英語（English）入門カード（全学年共通・音声読み上げ対応） */}
           <div className="bg-white rounded-2xl p-5 border-2 border-emerald-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-3">
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
                   <Globe className="w-3.5 h-3.5" />
-                  全学年共通・入門
+                  全学年共通・音声付き
                 </span>
                 <span className="text-xs font-semibold text-slate-400">全10問・制限時間10分</span>
               </div>
@@ -353,7 +373,7 @@ export function HomeView({
                 英語（English）入門トレーニング
               </h3>
               <p className="text-sm text-slate-600 mb-4">
-                あいさつ・数字・色・動物・日常フレーズをゼロから楽しく身につけます。
+                ネイティブ発音を聞きながら、あいさつ・数字・色・動物・日常フレーズを楽しく学びます。
               </p>
             </div>
             <button
@@ -400,7 +420,7 @@ export function HomeView({
 }
 
 // =========================================================================
-// 2. テスト実行画面（QuizRunnerView）
+// 2. テスト実行画面（QuizRunnerView - 音声読み上げ対応）
 // =========================================================================
 export function QuizRunnerView({
   questions = [],
@@ -432,6 +452,19 @@ export function QuizRunnerView({
   const isLastQuestion = activeIndex >= questions.length - 1;
 
   const meta = SUBJECT_META[subject] || SUBJECT_META.math;
+  const questionEnglishPart = useMemo(
+    () => extractEnglishPhrase(currentQuestion?.question),
+    [currentQuestion]
+  );
+
+  // 画面離脱や問題切り替え時に再生中の音声を停止
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [activeIndex]);
 
   if (!questions || questions.length === 0 || !currentQuestion) {
     return (
@@ -465,9 +498,18 @@ export function QuizRunnerView({
     setInternalAnswers(updated);
     if (typeof onSelectAnswer === 'function') onSelectAnswer(activeIndex, choice);
     if (typeof handleSelectAnswer === 'function') handleSelectAnswer(activeIndex, choice);
+
+    // 英語テストでは選択した英単語を自動で1回発音して耳からも覚えられるようにする
+    if (subject === 'english') {
+      speakEnglishText(choice);
+    }
   };
 
   const handleNextOrFinish = () => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
     if (!isLastQuestion) {
       const nextIdx = activeIndex + 1;
       setInternalIndex(nextIdx);
@@ -484,6 +526,9 @@ export function QuizRunnerView({
   };
 
   const handleQuit = () => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
     if (typeof onCancelQuiz === 'function') onCancelQuiz();
     else if (typeof onBackHome === 'function') onBackHome();
     else if (typeof setView === 'function') setView('home');
@@ -542,17 +587,29 @@ export function QuizRunnerView({
 
       {/* 問題カード */}
       <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm">
-        <div className="mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <span className="inline-block px-3 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-extrabold">
             分野：{currentQuestion.category || '思考力'}
           </span>
+
+          {/* 問題文に英語フレーズが含まれる場合は読み上げボタンを表示 */}
+          {subject === 'english' && questionEnglishPart && (
+            <button
+              type="button"
+              onClick={() => speakEnglishText(questionEnglishPart)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-extrabold transition"
+            >
+              <Volume2 className="w-4 h-4" />
+              問題の英語を聞く
+            </button>
+          )}
         </div>
 
         <h3 className="text-lg sm:text-xl font-extrabold text-slate-800 leading-relaxed whitespace-pre-line mb-6">
           {currentQuestion.question}
         </h3>
 
-        {/* 4択選択肢 */}
+        {/* 4択選択肢（選択ボタンと発音ボタンを分離し、回答後も発音可能に） */}
         <div className="space-y-3">
           {(currentQuestion.choices || []).map((choice, idx) => {
             const optionLetters = ['A', 'B', 'C', 'D'];
@@ -567,19 +624,22 @@ export function QuizRunnerView({
               } else if (isSelected && !isCorrect) {
                 cardStyle = 'border-rose-500 bg-rose-50 text-rose-900 ring-2 ring-rose-200';
               } else {
-                cardStyle = 'border-slate-200 bg-slate-50 text-slate-400 opacity-70';
+                cardStyle = 'border-slate-200 bg-slate-50 text-slate-500';
               }
             }
 
             return (
-              <button
+              <div
                 key={`${idx}_${choice}`}
-                type="button"
-                onClick={() => handleChoiceClick(choice)}
-                disabled={isAnswered}
-                className={`w-full text-left p-4 rounded-xl border-2 transition flex items-center justify-between gap-3 font-bold ${cardStyle}`}
+                className={`w-full rounded-xl border-2 transition flex items-center justify-between gap-2 pr-3 font-bold ${cardStyle}`}
               >
-                <div className="flex items-center gap-3">
+                {/* 選択肢を選ぶメインボタン領域 */}
+                <button
+                  type="button"
+                  onClick={() => handleChoiceClick(choice)}
+                  disabled={isAnswered}
+                  className="flex-1 text-left p-4 flex items-center gap-3 disabled:cursor-default"
+                >
                   <span
                     className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-black shrink-0 ${
                       isAnswered && isCorrect
@@ -592,15 +652,30 @@ export function QuizRunnerView({
                     {optionLetters[idx] || idx + 1}
                   </span>
                   <span className="text-base sm:text-lg">{choice}</span>
-                </div>
+                </button>
 
-                {isAnswered && isCorrect && (
-                  <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
-                )}
-                {isAnswered && isSelected && !isCorrect && (
-                  <XCircle className="w-6 h-6 text-rose-600 shrink-0" />
-                )}
-              </button>
+                {/* 右側の発音ボタン＆正誤アイコン領域 */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {subject === 'english' && (
+                    <button
+                      type="button"
+                      onClick={() => speakEnglishText(choice)}
+                      title={`「${choice}」の発音を聞く`}
+                      className="p-2.5 rounded-xl bg-emerald-100/80 hover:bg-emerald-200 text-emerald-800 transition flex items-center gap-1 text-xs font-extrabold"
+                    >
+                      <Volume2 className="w-4 h-4" />
+                      <span className="hidden sm:inline">発音</span>
+                    </button>
+                  )}
+
+                  {isAnswered && isCorrect && (
+                    <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
+                  )}
+                  {isAnswered && isSelected && !isCorrect && (
+                    <XCircle className="w-6 h-6 text-rose-600 shrink-0" />
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>
@@ -615,17 +690,30 @@ export function QuizRunnerView({
                   : 'bg-amber-50 border border-amber-200 text-amber-950'
               }`}
             >
-              <div className="flex items-center gap-2 font-extrabold text-base mb-1">
-                {selectedChoice === currentQuestion.answer ? (
-                  <>
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                    <span>大正解！すばらしい！</span>
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="w-5 h-5 text-rose-600" />
-                    <span>おしい！正解は「{currentQuestion.answer}」です</span>
-                  </>
+              <div className="flex flex-wrap items-center justify-between gap-2 font-extrabold text-base mb-1">
+                <div className="flex items-center gap-2">
+                  {selectedChoice === currentQuestion.answer ? (
+                    <>
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                      <span>大正解！すばらしい！</span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-5 h-5 text-rose-600" />
+                      <span>おしい！正解は「{currentQuestion.answer}」です</span>
+                    </>
+                  )}
+                </div>
+
+                {subject === 'english' && (
+                  <button
+                    type="button"
+                    onClick={() => speakEnglishText(currentQuestion.answer)}
+                    className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-emerald-700 text-xs font-extrabold shadow-2xs"
+                  >
+                    <Volume2 className="w-3.5 h-3.5" />
+                    正解を発音する
+                  </button>
                 )}
               </div>
               <p className="text-sm leading-relaxed mt-1">
@@ -787,15 +875,27 @@ export function ResultsView({
                   <span className="text-xs font-extrabold text-slate-500">
                     第 {idx + 1} 問（{q.category || '思考力'}）
                   </span>
-                  {isCorrect ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-700">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> 正解
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-rose-100 text-rose-700">
-                      <XCircle className="w-3.5 h-3.5" /> 復習ポイント
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {activeSubject === 'english' && (
+                      <button
+                        type="button"
+                        onClick={() => speakEnglishText(q.answer)}
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition"
+                      >
+                        <Volume2 className="w-3.5 h-3.5" />
+                        正解を発音
+                      </button>
+                    )}
+                    {isCorrect ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-700">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> 正解
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-rose-100 text-rose-700">
+                        <XCircle className="w-3.5 h-3.5" /> 復習ポイント
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <p className="text-sm sm:text-base font-bold text-slate-800 mb-2">
@@ -894,7 +994,6 @@ export function HistoryView({
     });
   }, [filteredHistory]);
 
-  // 直近30日間の学習スタンプカレンダー
   const last30Days = useMemo(() => {
     const studiedSet = new Set(
       allHistory.map((item) => String(item.date || item.createdAt || '').slice(0, 10))
@@ -1046,15 +1145,15 @@ export function HistoryView({
         ) : (
           <div className="divide-y divide-slate-100">
             {filteredHistory.slice(0, 20).map((item, idx) => {
-              const meta = SUBJECT_META[item.subject] || SUBJECT_META.math;
+              const itemMeta = SUBJECT_META[item.subject] || SUBJECT_META.math;
               return (
                 <div
                   key={item.id || idx}
                   className="py-3.5 flex flex-wrap items-center justify-between gap-3"
                 >
                   <div className="flex items-center gap-2.5">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold ${meta.badgeClass}`}>
-                      {meta.label}
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold ${itemMeta.badgeClass}`}>
+                      {itemMeta.label}
                     </span>
                     <span className="text-xs font-bold text-slate-500">
                       {item.subject === 'english' ? '全学年共通' : `${item.grade || '2'}年生`}
@@ -1258,7 +1357,7 @@ export function AdminView({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {combinedRecords.slice(0, 30).map((rec, idx) => {
-                  const meta = SUBJECT_META[rec.subject] || SUBJECT_META.math;
+                  const recMeta = SUBJECT_META[rec.subject] || SUBJECT_META.math;
                   return (
                     <tr key={rec.id || idx} className="hover:bg-slate-50">
                       <td className="py-2.5 px-3 text-xs text-slate-500">
@@ -1268,8 +1367,8 @@ export function AdminView({
                         {rec.userName || rec.displayName || 'メンバー'}
                       </td>
                       <td className="py-2.5 px-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${meta.badgeClass}`}>
-                          {meta.label}
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${recMeta.badgeClass}`}>
+                          {recMeta.label}
                         </span>
                       </td>
                       <td className="py-2.5 px-3 text-xs font-bold text-slate-600">
