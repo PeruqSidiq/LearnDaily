@@ -1,5 +1,5 @@
 // src/components/PageViews.jsx
-// 全5画面ビュー（ホーム・テスト実行・結果・学習履歴・保護者管理[APIキー＆問題クラウド同期対応]）
+// 全5画面ビュー（ホーム・テスト実行・結果・学習履歴・保護者管理[1日1回共通問題＋管理画面再作成上書き対応]）
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
@@ -153,23 +153,22 @@ export function HomeView({
   isLoadingQuiz = false
 }) {
   const [startingSubject, setStartingSubject] = useState(null);
-  const [customSets, setCustomSets] = useState(() =>
-    QuestionEngine.getAllCustomAiSetsFromLocal()
-  );
+  const [todaySets, setTodaySets] = useState({});
+  const todayStr = useMemo(() => QuestionEngine.getTodayJstString(), []);
 
-  // 画面表示時にFirestoreから最新のAIカスタム問題設定を同期（他端末との同期）
+  // 本日の作成済み日替わり問題マップを同期
   useEffect(() => {
     if (db) QuestionEngine.setFirestoreDb(db);
     let mounted = true;
-    QuestionEngine.syncAllCustomAiSetsFromFirestore().then((synced) => {
-      if (mounted && synced) {
-        setCustomSets(synced);
+    QuestionEngine.getTodayDailySetsMap(todayStr).then((map) => {
+      if (mounted && map) {
+        setTodaySets(map);
       }
     });
     return () => {
       mounted = false;
     };
-  }, [db]);
+  }, [db, todayStr]);
 
   const handleGradeChange = (nextGrade) => {
     if (typeof setGrade === 'function') setGrade(nextGrade);
@@ -200,7 +199,6 @@ export function HomeView({
   };
 
   const allHistory = history.length > 0 ? history : records;
-  const todayStr = new Date().toISOString().slice(0, 10);
 
   const stats = useMemo(() => {
     const todayCount = allHistory.filter((item) => {
@@ -231,9 +229,9 @@ export function HomeView({
   const displayName =
     customDisplayName || user?.displayName || user?.email?.split('@')[0] || 'チャレンジャー';
 
-  const hasCustomSet = (subj) => {
-    const key = QuestionEngine.getCustomSetKey(grade, subj);
-    return Boolean(customSets[key]);
+  const getTodaySetInfo = (subj) => {
+    const key = QuestionEngine.getDailySetKey(grade, subj, todayStr);
+    return todaySets[key] || null;
   };
 
   return (
@@ -244,13 +242,13 @@ export function HomeView({
           <div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold mb-2">
               <Sparkles className="w-3.5 h-3.5" />
-              毎日の習慣が未来をつくる
+              本日の共通問題（{todayStr}）・毎日1回更新
             </div>
             <h2 className="text-xl sm:text-2xl font-extrabold text-slate-800">
               こんにちは、{displayName} さん！
             </h2>
             <p className="text-sm text-slate-600 mt-1">
-              学年を選んで今日の思考力・語学トレーニングを始めましょう。
+              今日は全員同じ問題にチャレンジします。学年を選んでスタートしよう！
             </p>
           </div>
 
@@ -340,7 +338,7 @@ export function HomeView({
         <div className="flex items-center gap-2 mb-4">
           <BookOpen className="w-5 h-5 text-indigo-600" />
           <h2 className="text-lg font-extrabold text-slate-800">
-            分野別・総合思考トレーニング（{grade}年生向け / 英語は全学年共通）
+            本日のトレーニング（{grade}年生向け / 英語は全学年共通）
           </h2>
         </div>
 
@@ -353,9 +351,9 @@ export function HomeView({
                   <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
                     小学{grade}年生
                   </span>
-                  {hasCustomSet('math') && (
-                    <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-800">
-                      ✨AI問題配信中
+                  {getTodaySetInfo('math') && (
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-800">
+                      本日分準備完了
                     </span>
                   )}
                 </div>
@@ -375,7 +373,7 @@ export function HomeView({
               className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
             >
               <Play className="w-4 h-4" />
-              {startingSubject === 'math' ? '問題を準備中...' : '算数トレーニングを開始'}
+              {startingSubject === 'math' ? '本日の問題を準備中...' : '算数トレーニングを開始'}
             </button>
           </div>
 
@@ -387,9 +385,9 @@ export function HomeView({
                   <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700">
                     小学{grade}年生
                   </span>
-                  {hasCustomSet('japanese') && (
-                    <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-800">
-                      ✨AI問題配信中
+                  {getTodaySetInfo('japanese') && (
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-800">
+                      本日分準備完了
                     </span>
                   )}
                 </div>
@@ -409,7 +407,7 @@ export function HomeView({
               className="w-full py-3 px-4 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
             >
               <Play className="w-4 h-4" />
-              {startingSubject === 'japanese' ? '問題を準備中...' : '国語トレーニングを開始'}
+              {startingSubject === 'japanese' ? '本日の問題を準備中...' : '国語トレーニングを開始'}
             </button>
           </div>
 
@@ -422,9 +420,9 @@ export function HomeView({
                     <Globe className="w-3.5 h-3.5" />
                     全学年共通・音声付き
                   </span>
-                  {hasCustomSet('english') && (
-                    <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-800">
-                      ✨AI問題配信中
+                  {getTodaySetInfo('english') && (
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-800">
+                      本日分準備完了
                     </span>
                   )}
                 </div>
@@ -445,7 +443,7 @@ export function HomeView({
                 className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
               >
                 <Play className="w-4 h-4" />
-                {startingSubject === 'english' ? '英語問題を準備中...' : '英語テストを開始する'}
+                {startingSubject === 'english' ? '本日の英語問題を準備中...' : '英語テストを開始する'}
               </button>
               <button
                 type="button"
@@ -455,9 +453,7 @@ export function HomeView({
               >
                 <Headphones className="w-3.5 h-3.5" />
                 {startingSubject === 'english_listening'
-                  ? 'リスニング問題を準備中...'
-                  : hasCustomSet('english_listening')
-                  ? '✨AIリスニング10問に挑戦'
+                  ? '本日のリスニング問題を準備中...'
                   : '発音を聞いて答えるリスニング10問に挑戦'}
               </button>
             </div>
@@ -471,9 +467,9 @@ export function HomeView({
                   <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700">
                     小学{grade}年生
                   </span>
-                  {hasCustomSet('mixed') && (
-                    <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-800">
-                      ✨AI問題配信中
+                  {getTodaySetInfo('mixed') && (
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-800">
+                      本日分準備完了
                     </span>
                   )}
                 </div>
@@ -493,7 +489,7 @@ export function HomeView({
               className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
             >
               <Play className="w-4 h-4" />
-              {startingSubject === 'mixed' ? '問題を準備中...' : '総合チャレンジを開始'}
+              {startingSubject === 'mixed' ? '本日の問題を準備中...' : '総合チャレンジを開始'}
             </button>
           </div>
         </div>
@@ -964,7 +960,7 @@ export function ResultsView({
             className="w-full sm:w-auto px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
           >
             <RotateCcw className="w-4 h-4" />
-            同じ科目にもう一度挑戦
+            同じ問題にもう一度挑戦
           </button>
           <button
             type="button"
@@ -1314,7 +1310,7 @@ export function HistoryView({
 }
 
 // =========================================================================
-// 5. 保護者・管理者画面（AdminView - APIキー＆AI問題 Firestoreクラウド同期対応）
+// 5. 保護者・管理者画面（AdminView - 1日1回問題の管理 ＆ 手動再作成上書き）
 // =========================================================================
 export function AdminView({
   db,
@@ -1346,29 +1342,27 @@ export function AdminView({
   const [genError, setGenError] = useState('');
   const [previewQuestions, setPreviewQuestions] = useState([]);
   const [appliedNotice, setAppliedNotice] = useState('');
-  const [activeCustomSets, setActiveCustomSets] = useState(() =>
-    QuestionEngine.getAllCustomAiSetsFromLocal()
-  );
+  const [todaySetsMap, setTodaySetsMap] = useState({});
 
+  const todayStr = useMemo(() => QuestionEngine.getTodayJstString(), []);
   const adminEmail = AppConfig?.ADMIN_EMAIL || 'peruqsidiq@gmail.com';
   const hasAdminAccess = isAdmin || user?.email === adminEmail;
 
-  // 親コンポーネント(App.jsx)がFirestoreからAPIキーを読み込んだら入力欄へ自動反映
   useEffect(() => {
     if (customApiKey) {
       setApiKeyInput(customApiKey);
     }
   }, [customApiKey]);
 
-  // 管理画面表示時にFirestoreから最新のカスタム問題一覧＆APIキーを同期
+  // 管理画面表示時に本日の日替わり問題一覧とAPIキーを同期
   useEffect(() => {
     if (!hasAdminAccess) return;
     if (db) QuestionEngine.setFirestoreDb(db);
     let mounted = true;
 
-    QuestionEngine.syncAllCustomAiSetsFromFirestore().then((synced) => {
-      if (mounted && synced) {
-        setActiveCustomSets(synced);
+    QuestionEngine.getTodayDailySetsMap(todayStr).then((map) => {
+      if (mounted && map) {
+        setTodaySetsMap(map);
       }
     });
 
@@ -1391,7 +1385,7 @@ export function AdminView({
     return () => {
       mounted = false;
     };
-  }, [db, hasAdminAccess]);
+  }, [db, hasAdminAccess, todayStr]);
 
   const handleHome = () => {
     if (typeof onBackHome === 'function') onBackHome();
@@ -1455,14 +1449,14 @@ export function AdminView({
       await persistKeyEverywhere(trimmed);
       setSavedNotice(
         trimmed
-          ? 'APIキーを管理者専用Firestoreに保存しました！別のPCやスマホからも自動読み込みされます。'
+          ? 'APIキーをFirestoreに保存しました！毎日最初の1回だけ自動生成に使われます。'
           : '保存済みのAPIキーを削除しました。'
       );
       setTimeout(() => setSavedNotice(''), 5000);
     } catch (err) {
       console.error('APIキーのFirestore保存エラー:', err);
       setKeyError(
-        `クラウド保存に失敗しました（${err?.message || 'Firestoreルールを確認してください'}）。このブラウザには一時保存されています。`
+        `クラウド保存に失敗しました（${err?.message || 'Firestoreルールを確認してください'}）。`
       );
     } finally {
       setIsSavingKey(false);
@@ -1486,7 +1480,7 @@ export function AdminView({
     }
   };
 
-  // --- Gemini APIで問題をAI再作成 ---
+  // --- 管理画面からの手動AI問題再作成（1日1回制限を受けずいつでも実行可能） ---
   const handleRegenerateWithAi = async () => {
     const effectiveKey =
       apiKeyInput.trim() ||
@@ -1518,29 +1512,28 @@ export function AdminView({
     }
   };
 
-  // --- 再作成した10問をローカル＆Firestoreの両方に保存（全端末へ配信） ---
-  const handleApplyPreviewToTest = async () => {
+  // --- 再作成した10問で「本日の共通問題」を上書き保存 ---
+  const handleApplyPreviewToToday = async () => {
     if (!previewQuestions || previewQuestions.length === 0) return;
     setGenError('');
     setAppliedNotice('');
     setIsSyncingCloud(true);
 
     try {
-      const savedToCloud = await QuestionEngine.saveCustomAiQuestions(
+      await QuestionEngine.saveDailyQuizSet(
         genGrade,
         genSubject,
         previewQuestions,
-        user?.email || adminEmail
+        'admin_manual',
+        todayStr
       );
-      const updatedMap = await QuestionEngine.syncAllCustomAiSetsFromFirestore();
-      setActiveCustomSets(updatedMap);
+      const updatedMap = await QuestionEngine.getTodayDailySetsMap(todayStr);
+      setTodaySetsMap(updatedMap);
 
       const label = SUBJECT_META[genSubject]?.label || genSubject;
       const targetGradeText = isEnglishSubject(genSubject) ? '全学年共通' : `小学${genGrade}年生`;
       setAppliedNotice(
-        savedToCloud
-          ? `「${label}（${targetGradeText}）」をFirestoreクラウドに保存しました！他のスマホやタブレットからも同じ10問が出題されます。`
-          : `「${label}（${targetGradeText}）」をこのブラウザに保存しました（※Firestore未接続のためローカルのみ適用）。`
+        `本日（${todayStr}）の「${label}（${targetGradeText}）」を新しいAI問題10問に更新しました！全ユーザーにこの同じ問題が出題されます。`
       );
     } catch (err) {
       setGenError(err?.message || 'クラウド保存中にエラーが発生しました。');
@@ -1549,24 +1542,24 @@ export function AdminView({
     }
   };
 
-  // --- 適用中のカスタムAI問題をローカル＆Firestoreの両方から解除 ---
-  const handleRemoveCustomSet = async (gradeVal, subjVal) => {
+  // --- 本日の問題をリセット（次に誰かが開いたときに1日1回の自動生成をやり直す） ---
+  const handleResetTodaySet = async (gradeVal, subjVal) => {
     setGenError('');
     setIsSyncingCloud(true);
     try {
-      await QuestionEngine.clearCustomAiQuestions(gradeVal, subjVal);
-      const updatedMap = await QuestionEngine.syncAllCustomAiSetsFromFirestore();
-      setActiveCustomSets(updatedMap);
-      setAppliedNotice('カスタムAI問題をクラウドとブラウザから解除し、標準の自動出題に戻しました。');
+      await QuestionEngine.deleteDailyQuizSet(gradeVal, subjVal, todayStr);
+      const updatedMap = await QuestionEngine.getTodayDailySetsMap(todayStr);
+      setTodaySetsMap(updatedMap);
+      setAppliedNotice('本日の保存済み問題をリセットしました。次回テスト開始時に新しく1回分が自動作成されます。');
     } catch (err) {
-      setGenError(err?.message || '解除中にエラーが発生しました。');
+      setGenError(err?.message || 'リセット中にエラーが発生しました。');
     } finally {
       setIsSyncingCloud(false);
     }
   };
 
   const combinedRecords = allRecords.length > 0 ? allRecords : history;
-  const customSetEntries = Object.entries(activeCustomSets);
+  const todaySetEntries = Object.entries(todaySetsMap);
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
@@ -1577,7 +1570,7 @@ export function AdminView({
             保護者・管理者ダッシュボード
           </div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-slate-800">
-            AI出題設定とクラウド問題配信管理
+            日替わり共通問題管理（{todayStr}）
           </h2>
         </div>
 
@@ -1591,7 +1584,7 @@ export function AdminView({
         </button>
       </div>
 
-      {/* 1. Gemini APIキー設定カード（管理者専用Firestoreクラウド同期対応） */}
+      {/* 1. Gemini APIキー設定カード */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm mb-6">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <h3 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
@@ -1600,11 +1593,11 @@ export function AdminView({
           </h3>
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-extrabold">
             <Cloud className="w-3.5 h-3.5" />
-            管理者専用クラウド自動同期
+            1日1回自動生成 ＆ 管理画面再作成用
           </span>
         </div>
         <p className="text-sm text-slate-600 mb-4 leading-relaxed">
-          保存した API キーは管理者アカウント（{adminEmail}）専用の Firestore ドキュメントに安全に保管され、別の PC やスマホからログインした際も自動読み込みされます。
+          毎日その日最初にテストが開かれたとき1回だけAIが問題を作成し、その日中は全ユーザーに同じ問題が出題されます。
         </p>
 
         <form onSubmit={handleSave} className="space-y-3">
@@ -1625,7 +1618,7 @@ export function AdminView({
               {isSavingKey ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>クラウドへ保存中...</span>
+                  <span>保存中...</span>
                 </>
               ) : (
                 <>
@@ -1664,21 +1657,21 @@ export function AdminView({
         </form>
       </div>
 
-      {/* 2. Gemini API を使った問題AI再作成ジェネレーター（Firestoreクラウド同期対応） */}
+      {/* 2. 管理画面からの手動AI問題再作成パネル */}
       <div className="bg-white rounded-2xl p-6 border-2 border-indigo-200 shadow-sm mb-6">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <h3 className="text-base sm:text-lg font-extrabold text-slate-800 flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-indigo-600" />
-            Gemini API で問題をAI再作成する
+            管理画面から問題をAIで再作成する
           </h3>
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sky-50 text-sky-700 border border-sky-200 text-xs font-extrabold">
             <Cloud className="w-3.5 h-3.5" />
-            Firestore 全端末クラウド同期対応
+            全ユーザー同一問題へ上書き反映
           </span>
         </div>
 
         <p className="text-sm text-slate-600 mb-5 leading-relaxed">
-          科目とテーマを指定して新しい問題セット（10問）を作成し、「クラウドに保存して本番適用」を押すと、お子様のスマホやタブレットからも同じ問題が出題されます。
+          通常は1日1回のみ作成されますが、ここからはいつでも新しい問題（10問）を再作成して、今日の共通問題を上書き更新できます。
         </p>
 
         {/* 科目・学年・テーマ選択フォーム */}
@@ -1744,7 +1737,7 @@ export function AdminView({
             {isGenerating ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Gemini AIが10問を作成中...</span>
+                <span>Gemini AIが10問を再作成中...</span>
               </>
             ) : (
               <>
@@ -1770,33 +1763,34 @@ export function AdminView({
           </div>
         )}
 
-        {/* 現在クラウド＆本番テストに適用中のカスタムAIセット一覧 */}
-        {customSetEntries.length > 0 && (
+        {/* 本日（YYYY-MM-DD）すでに作成済みの共通問題セット一覧 */}
+        {todaySetEntries.length > 0 && (
           <div className="mt-5 pt-5 border-t border-slate-100">
             <h4 className="text-xs font-extrabold text-slate-600 mb-2.5">
-              現在、全端末の本番テストに配信中のAIカスタム問題セット：
+              本日（{todayStr}）作成済み・全ユーザー共通で出題中の問題セット：
             </h4>
             <div className="flex flex-wrap gap-2">
-              {customSetEntries.map(([key, info]) => {
+              {todaySetEntries.map(([key, info]) => {
                 const subjLabel = SUBJECT_META[info.subject]?.label || info.subject;
                 const gradeLabel = isEnglishSubject(info.subject)
                   ? '全学年共通'
                   : `${info.grade}年生`;
+                const sourceTag = info.source === 'admin_manual' ? '管理者再作成' : '1日1回自動';
                 return (
                   <div
                     key={key}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-extrabold text-amber-900"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-extrabold text-emerald-900"
                   >
                     <span>
-                      ✨ {subjLabel}（{gradeLabel}）
+                      {subjLabel}（{gradeLabel}・{sourceTag}）
                     </span>
                     <button
                       type="button"
                       disabled={isSyncingCloud}
-                      onClick={() => handleRemoveCustomSet(info.grade, info.subject)}
+                      onClick={() => handleResetTodaySet(info.grade, info.subject)}
                       className="text-rose-600 hover:text-rose-800 underline ml-1 disabled:opacity-50"
                     >
-                      解除
+                      リセット
                     </button>
                   </div>
                 );
@@ -1810,24 +1804,24 @@ export function AdminView({
           <div className="mt-6 pt-6 border-t border-slate-200">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <h4 className="text-sm sm:text-base font-extrabold text-slate-800">
-                作成された問題プレビュー（全 {previewQuestions.length} 問）
+                再作成された問題プレビュー（全 {previewQuestions.length} 問）
               </h4>
 
               <button
                 type="button"
-                onClick={handleApplyPreviewToTest}
+                onClick={handleApplyPreviewToToday}
                 disabled={isSyncingCloud}
                 className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-extrabold text-xs sm:text-sm rounded-xl transition flex items-center gap-1.5 shadow-sm"
               >
                 {isSyncingCloud ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Firestoreへ保存中...</span>
+                    <span>今日の共通問題を更新中...</span>
                   </>
                 ) : (
                   <>
                     <Cloud className="w-4 h-4" />
-                    <span>クラウドに保存して本番適用する</span>
+                    <span>今日の共通問題として全ユーザーに適用する</span>
                   </>
                 )}
               </button>
