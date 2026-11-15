@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
-  signInAnonymously,
-  signInWithCustomToken,
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged
@@ -22,7 +23,7 @@ import {
 } from 'recharts';
 import {
   Trophy, BookOpen, Calculator, CheckCircle2, User, LogIn, LogOut, BarChart2, ChevronRight, Sparkles, BrainCircuit, Check, AlertCircle, History, ArrowRight, Calendar, Flame, RefreshCw, Zap,
-  ShieldCheck, Lock, Users, TrendingUp, Filter, CalendarDays, Timer, Target, RotateCcw
+  ShieldCheck, Users, TrendingUp, Filter, CalendarDays, Timer, Target, RotateCcw, Mail, KeyRound, UserPlus, Edit3
 } from 'lucide-react';
 
 // ==========================================
@@ -40,7 +41,7 @@ const firebaseConfig = typeof __firebase_config !== 'undefined'
       measurementId: "G-RYTSDGW0GP"
     };
 
-const app = initializeApp(firebaseConfig);
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'yotsuya-otsuka-prep-app';
@@ -62,104 +63,380 @@ const formatSeconds = (sec) => {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 };
 
-// ==========================================
-// Base Question Datasets (Grade 2 & Grade 5)
-// ==========================================
-
-const MATH_QUESTIONS_G2 = [
-  {
-    id: "m2_1",
-    category: "計算の工夫",
-    categoryName: "算数計算",
-    question: "つぎの けいさんを くふうして しなさい。\n28 + 15 + 12",
-    options: ["55", "50", "45", "60"],
-    correctIndex: 0,
-    explanation: "28 と 12 を さきに たすと 40 になります。\n40 + 15 = 55 と かんたんに けいさんできます。"
-  },
-  {
-    id: "m2_2",
-    category: "かけ算・九九",
-    categoryName: "算数計算",
-    question: "1はこに 6こずつ まんじゅうが はいっています。4はこでは みんなで 何こになりますか。",
-    options: ["20 個", "24 個", "18 個", "30 個"],
-    correctIndex: 1,
-    explanation: "かけ算の ぶんしょうだいです。\n6 × 4 = 24 個 になります。"
-  },
-  {
-    id: "m2_3",
-    category: "文章題・和差",
-    categoryName: "特殊算",
-    question: "たかし君は シールを 35まい もっています。あきら君は たかし君より 8まい おおく もっています。2人あわせて 何まい もっていますか。",
-    options: ["43 枚", "78 枚", "70 枚", "82 枚"],
-    correctIndex: 1,
-    explanation: "まず あきら君の まい数を もとめます。\nあきら君：35 + 8 = 43 枚。\n2人あわせて：35 + 43 = 78 枚 です。"
-  },
-  {
-    id: "m2_4",
-    category: "単位・長さ",
-    categoryName: "思考力",
-    question: "1m 20cm の テープがあります。ここから 40cm 切りとると、のこりは 何cm になりますか。",
-    options: ["60 cm", "80 cm", "100 cm", "70 cm"],
-    correctIndex: 1,
-    explanation: "1m ＝ 100cm なので、1m 20cm ＝ 120cm です。\n120 - 40 ＝ 80cm となります。"
-  },
-  {
-    id: "m2_5",
-    category: "図形",
-    categoryName: "図形",
-    question: "三角形には 角（かど）が いくつ ありますか。",
-    options: ["2 つ", "3 つ", "4 つ", "5 つ"],
-    correctIndex: 1,
-    explanation: "三角形は 3つの ちょうてん（角）と 3つの へんから できています。"
-  },
-  {
-    id: "m2_6",
-    category: "規則性",
-    categoryName: "思考力",
-    question: "2, 5, 8, 11, 14, ◯ … と きまりよく ならんでいます。◯に はいる かずは いくつですか。",
-    options: ["16", "17", "18", "15"],
-    correctIndex: 1,
-    explanation: "3ずつ ふえる きまりです。\n14 + 3 = 17 となります。"
-  },
-  {
-    id: "m2_7",
-    category: "たし算・ひき算",
-    categoryName: "算数計算",
-    question: "100 から 37 を ひいた 答えは いくつですか。",
-    options: ["63", "73", "53", "67"],
-    correctIndex: 0,
-    explanation: "100 - 37 = 63 です。"
-  },
-  {
-    id: "m2_8",
-    category: "水のかさ",
-    categoryName: "思考力",
-    question: "1L（リットル）は 何dL（デシリットル）ですか。",
-    options: ["10 dL", "100 dL", "1000 dL", "5 dL"],
-    correctIndex: 0,
-    explanation: "1L ＝ 10dL です。"
-  },
-  {
-    id: "m2_9",
-    category: "時計・時間",
-    categoryName: "思考力",
-    question: "午前 9時 30分 から 45分ごの じかんは 午前何時何分ですか。",
-    options: ["午前 10時 00分", "午前 10時 15分", "午前 10時 30分", "午前 9時 75分"],
-    correctIndex: 1,
-    explanation: "30分たったら 午前10時になります。\nあと 15分あるので、午前 10時 15分 です。"
-  },
-  {
-    id: "m2_10",
-    category: "図形・はこの形",
-    categoryName: "図形",
-    question: "さいころの 形（きれいな 正方体の はこ）には、めん（かお）が 全部で いくつ ありますか。",
-    options: ["4 つ", "6 つ", "8 つ", "12 つ"],
-    correctIndex: 1,
-    explanation: "さいころ（立方体）の 面の数は 全部で 6つ です。"
+// Helper: Shuffle Array (Fisher-Yates)
+const shuffleArray = (array) => {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
   }
-];
+  return arr;
+};
 
-const JAPANESE_QUESTIONS_G2 = [
+// Helper: Shuffle Options inside a Question while keeping correctIndex accurate
+const randomizeQuestionOptions = (q) => {
+  const indexedOptions = q.options.map((text, idx) => ({
+    text,
+    isCorrect: idx === q.correctIndex
+  }));
+  const shuffled = shuffleArray(indexedOptions);
+  return {
+    ...q,
+    options: shuffled.map(o => o.text),
+    correctIndex: shuffled.findIndex(o => o.isCorrect)
+  };
+};
+
+// ==========================================
+// Dynamic Math Generators (Produces Fresh Numbers Every Day & Every Attempt)
+// ==========================================
+
+const generateDynamicMathG2 = (seedBase) => {
+  const rand = (offset, min, max) => {
+    const x = Math.sin(seedBase + offset * 17.3) * 10000;
+    const frac = x - Math.floor(x);
+    return Math.floor(frac * (max - min + 1)) + min;
+  };
+
+  // Q1: 工夫するたし算
+  const a1 = rand(1, 13, 28);
+  const c1 = 40 - a1;
+  const b1 = rand(2, 11, 29);
+  const ans1 = 40 + b1;
+
+  // Q2: かけ算・九九の文章題
+  const perBox = rand(3, 4, 9);
+  const boxes = rand(4, 3, 8);
+  const ans2 = perBox * boxes;
+
+  // Q3: 2人の合計（和差のきほん）
+  const baseCards = rand(5, 22, 48);
+  const moreCards = rand(6, 6, 18);
+  const friendCards = baseCards + moreCards;
+  const ans3 = baseCards + friendCards;
+
+  // Q4: 長さの計算（m と cm）
+  const meters = rand(7, 1, 3);
+  const extraCm = rand(8, 10, 45);
+  const cutCm = rand(9, 25, 85);
+  const totalCm = meters * 100 + extraCm;
+  const ans4 = totalCm - cutCm;
+
+  // Q5: 100からのひき算
+  const subNum = rand(10, 23, 78);
+  const ans5 = 100 - subNum;
+
+  // Q6: 数の規則性（等差）
+  const startSeq = rand(11, 2, 9);
+  const stepSeq = rand(12, 3, 7);
+  const seqArr = [0, 1, 2, 3, 4].map(i => startSeq + stepSeq * i);
+  const ans6 = startSeq + stepSeq * 5;
+
+  // Q7: 時計・時間の進み
+  const startHour = rand(13, 8, 10);
+  const startMin = rand(14, 15, 40);
+  const addMin = rand(15, 30, 50);
+  const totalMins = startMin + addMin;
+  const endHour = startHour + Math.floor(totalMins / 60);
+  const endMin = totalMins % 60;
+  const altMin = endMin >= 5 ? endMin - 5 : endMin + 5;
+  const ans7 = `午前 ${endHour}時 ${String(endMin).padStart(2, '0')}分`;
+
+  // Q8: 水のかさ（L と dL）
+  const liters = rand(16, 2, 5);
+  const deciliters = rand(17, 2, 8);
+  const ans8 = liters * 10 + deciliters;
+
+  // Q9: お買い物のおつり
+  const itemA = rand(18, 120, 260);
+  const itemB = rand(19, 110, 210);
+  const ans9 = 500 - (itemA + itemB);
+
+  // Q10: 図形の辺と頂点
+  const shapeIdx = rand(20, 0, 2);
+  const shapes = [
+    { name: "三角形", corners: 3, explain: "三角形は 3つの ちょうてん（角）と 3つの へんから できています。" },
+    { name: "四角形（長方形）", corners: 4, explain: "四角形は 4つの ちょうてん（角）と 4つの へんから できています。" },
+    { name: "さいころ（立方体）の めん（かお）", corners: 6, explain: "さいころ（立方体）の 面の数は 全部で 6つ です。" }
+  ];
+  const chosenShape = shapes[shapeIdx];
+
+  const pool = [
+    {
+      id: `g2_m1_${seedBase}`,
+      category: "計算の工夫",
+      categoryName: "算数計算",
+      question: `つぎの けいさんを くふうして しなさい。\n${a1} + ${b1} + ${c1}`,
+      options: [`${ans1}`, `${ans1 - 10}`, `${ans1 + 10}`, `${ans1 - 5}`],
+      correctIndex: 0,
+      explanation: `${a1} と ${c1} を さきに たすと ちょうど 40 になります。\n40 + ${b1} = ${ans1} です。`
+    },
+    {
+      id: `g2_m2_${seedBase}`,
+      category: "かけ算・九九",
+      categoryName: "算数計算",
+      question: `1ふくろに ${perBox}こずつ アメが はいっています。${boxes}ふくろでは みんなで 何こになりますか。`,
+      options: [`${ans2} 個`, `${perBox + boxes} 個`, `${ans2 + perBox} 個`, `${ans2 - boxes} 個`],
+      correctIndex: 0,
+      explanation: `1つ分の数 × いくつ分 ＝ 全部の数 なので、\n${perBox} × ${boxes} = ${ans2} 個 になります。`
+    },
+    {
+      id: `g2_m3_${seedBase}`,
+      category: "文章題・和差",
+      categoryName: "特殊算",
+      question: `ゆうた君は カードを ${baseCards}まい もっています。けんた君は ゆうた君より ${moreCards}まい おおく もっています。2人あわせて 何まい もっていますか。`,
+      options: [`${ans3} 枚`, `${friendCards} 枚`, `${baseCards * 2} 枚`, `${ans3 + 10} 枚`],
+      correctIndex: 0,
+      explanation: `まず けんた君の まい数を もとめます：${baseCards} + ${moreCards} = ${friendCards} 枚。\n2人あわせて：${baseCards} + ${friendCards} = ${ans3} 枚 です。`
+    },
+    {
+      id: `g2_m4_${seedBase}`,
+      category: "単位・長さ",
+      categoryName: "思考力",
+      question: `${meters}m ${extraCm}cm の リボンがあります。ここから ${cutCm}cm 切りとると、のこりは 何cm になりますか。`,
+      options: [`${ans4} cm`, `${ans4 + 100} cm`, `${ans4 - 10} cm`, `${totalCm} cm`],
+      correctIndex: 0,
+      explanation: `1m ＝ 100cm なので、${meters}m ${extraCm}cm ＝ ${totalCm}cm です。\n${totalCm} - ${cutCm} ＝ ${ans4}cm となります。`
+    },
+    {
+      id: `g2_m5_${seedBase}`,
+      category: "たし算・ひき算",
+      categoryName: "算数計算",
+      question: `100 から ${subNum} を ひいた 答えは いくつですか。`,
+      options: [`${ans5}`, `${ans5 + 10}`, `${ans5 - 10}`, `${100 - subNum + 1}`],
+      correctIndex: 0,
+      explanation: `100 - ${subNum} = ${ans5} です。たしかめ算（${ans5} + ${subNum} = 100）も してみましょう。`
+    },
+    {
+      id: `g2_m6_${seedBase}`,
+      category: "規則性",
+      categoryName: "思考力",
+      question: `${seqArr.join(', ')}, ◯ … と きまりよく ならんでいます。◯に はいる かずは いくつですか。`,
+      options: [`${ans6}`, `${ans6 - 1}`, `${ans6 + stepSeq}`, `${ans6 + 1}`],
+      correctIndex: 0,
+      explanation: `${stepSeq}ずつ ふえる きまりです。\n${seqArr[4]} + ${stepSeq} = ${ans6} となります。`
+    },
+    {
+      id: `g2_m7_${seedBase}`,
+      category: "時計・時間",
+      categoryName: "思考力",
+      question: `午前 ${startHour}時 ${startMin}分 から ${addMin}分ごの じかんは 午前何時何分ですか。`,
+      options: [
+        ans7,
+        `午前 ${endHour}時 ${String((endMin + 10) % 60).padStart(2, '0')}分`,
+        `午前 ${endHour - 1}時 ${String(endMin).padStart(2, '0')}分`,
+        `午前 ${endHour}時 ${String(altMin).padStart(2, '0')}分`
+      ],
+      correctIndex: 0,
+      explanation: `${startMin}分 ＋ ${addMin}分 ＝ ${totalMins}分（1時間と ${endMin}分）なので、\n${ans7} になります。`
+    },
+    {
+      id: `g2_m8_${seedBase}`,
+      category: "水のかさ",
+      categoryName: "思考力",
+      question: `${liters}L ${deciliters}dL の 水は、全部で 何dL（デシリットル）ですか。`,
+      options: [`${ans8} dL`, `${liters + deciliters} dL`, `${ans8 * 10} dL`, `${ans8 - 5} dL`],
+      correctIndex: 0,
+      explanation: `1L ＝ 10dL なので、${liters}L ＝ ${liters * 10}dL です。\n${liters * 10} + ${deciliters} = ${ans8}dL になります。`
+    },
+    {
+      id: `g2_m9_${seedBase}`,
+      category: "お金の計算",
+      categoryName: "算数計算",
+      question: `500円玉を 1まい もって 買い物に いきました。${itemA}円の ノートと ${itemB}円の えんぴつを 買うと、おつりは 何円ですか。`,
+      options: [`${ans9} 円`, `${500 - itemA} 円`, `${ans9 + 50} 円`, `${ans9 + 100} 円`],
+      correctIndex: 0,
+      explanation: `2つの 代金の 合計は ${itemA} + ${itemB} = ${itemA + itemB} 円です。\nおつりは 500 - ${itemA + itemB} = ${ans9} 円になります。`
+    },
+    {
+      id: `g2_m10_${seedBase}`,
+      category: "図形",
+      categoryName: "図形",
+      question: `${chosenShape.name}は いくつ ありますか。`,
+      options: [`${chosenShape.corners} つ`, `${chosenShape.corners + 2} つ`, `${chosenShape.corners - 1} つ`, `${chosenShape.corners + 4} つ`],
+      correctIndex: 0,
+      explanation: chosenShape.explain
+    }
+  ];
+
+  return shuffleArray(pool).map(randomizeQuestionOptions);
+};
+
+const generateDynamicMathG5 = (seedBase) => {
+  const rand = (offset, min, max) => {
+    const x = Math.sin(seedBase + offset * 23.7) * 10000;
+    const frac = x - Math.floor(x);
+    return Math.floor(frac * (max - min + 1)) + min;
+  };
+
+  // Q1: 分配法則（計算の工夫）
+  const multX = rand(1, 14, 49);
+  const numY1 = rand(2, 22, 68);
+  const numY2 = 100 - numY1;
+  const ans1 = multX * 100;
+
+  // Q2: 植木算（両端に植える）
+  const interval = rand(3, 3, 8);
+  const gaps = rand(4, 10, 24);
+  const totalDist = interval * gaps;
+  const ans2 = gaps + 1;
+
+  // Q3: 和差算
+  const younger = rand(5, 8, 15);
+  const diff = rand(6, 4, 12) * 2;
+  const older = younger + diff;
+  const sumAge = younger + older;
+
+  // Q4: 等差数列
+  const firstTerm = rand(7, 2, 11);
+  const commonDiff = rand(8, 3, 8);
+  const targetN = rand(9, 10, 16);
+  const seqPreview = [0, 1, 2, 3, 4].map(i => firstTerm + commonDiff * i);
+  const ans4 = firstTerm + commonDiff * (targetN - 1);
+
+  // Q5: つるかめ算
+  const turtles = rand(10, 3, 9);
+  const rawCranes = rand(11, 4, 11);
+  const cranes = rawCranes === turtles ? rawCranes + 1 : rawCranes;
+  const totalHeads = cranes + turtles;
+  const totalLegs = cranes * 2 + turtles * 4;
+
+  // Q6: 逆算（還元算）
+  const origNum = rand(12, 4, 15);
+  const addStep = rand(13, 3, 9);
+  const multStep = rand(14, 2, 5);
+  const subStep = rand(15, 4, 14);
+  const finalVal = (origNum + addStep) * multStep - subStep;
+
+  // Q7: 平面図形（四隅を切り落とした長方形の面積）
+  const rectH = rand(16, 7, 12);
+  const rectW = rand(17, 11, 18);
+  const cutSide = rand(18, 1, 2);
+  const ans7 = rectH * rectW - cutSide * cutSide * 4;
+
+  // Q8: 立体図形（立方体の個数）
+  const cubeEdge = rand(19, 3, 5);
+  const ans8 = cubeEdge * cubeEdge * cubeEdge;
+
+  // Q9: 過不足算
+  const kids = rand(20, 6, 14);
+  const lessGive = rand(21, 3, 5);
+  const moreGive = lessGive + 2;
+  const remBooks = rand(22, 6, 14);
+  const shortBooks = kids * 2 - remBooks;
+
+  // Q10: 周期算
+  const targetPos = rand(23, 32, 68);
+  const colors = ["赤", "青", "黄", "白", "緑"];
+  const remIdx = (targetPos - 1) % 5;
+  const ans10 = colors[remIdx];
+
+  const pool = [
+    {
+      id: `g5_m1_${seedBase}`,
+      category: "計算の工夫",
+      categoryName: "算数計算",
+      question: `次の計算を工夫してしなさい。\n${multX} × ${numY1} + ${multX} × ${numY2}`,
+      options: [`${ans1}`, `${ans1 / 10}`, `${ans1 + 100}`, `${multX * 50}`],
+      correctIndex: 0,
+      explanation: `分配法則を使います。\n${multX} × (${numY1} + ${numY2}) = ${multX} × 100 = ${ans1} となります。`
+    },
+    {
+      id: `g5_m2_${seedBase}`,
+      category: "植木算",
+      categoryName: "特殊算",
+      question: `長さ ${totalDist}m のまっすぐな道路の片側に、端から端まで ${interval}m おきに木を植えます。木は全部で何本必要ですか。`,
+      options: [`${ans2} 本`, `${gaps} 本`, `${ans2 + 1} 本`, `${gaps - 1} 本`],
+      correctIndex: 0,
+      explanation: `両端に植える植木算です。\n間の数 ＝ ${totalDist} ÷ ${interval} ＝ ${gaps}（個）。\n木の数 ＝ ${gaps} ＋ 1 ＝ ${ans2}（本）となります。`
+    },
+    {
+      id: `g5_m3_${seedBase}`,
+      category: "和差算",
+      categoryName: "特殊算",
+      question: `AさんとBさんの年齢の和は ${sumAge} 歳で、AさんはBさんより ${diff} 歳年上です。Aさんは何歳ですか。`,
+      options: [`${older} 歳`, `${younger} 歳`, `${older + 2} 歳`, `${Math.floor(sumAge / 2)} 歳`],
+      correctIndex: 0,
+      explanation: `和差算の公式を使います。\nAさん（大きい方）＝ (${sumAge} ＋ ${diff}) ÷ 2 ＝ ${older} 歳です。`
+    },
+    {
+      id: `g5_m4_${seedBase}`,
+      category: "等差数列",
+      categoryName: "思考力",
+      question: `${seqPreview.join(', ')}, … のように一定の決まりで数が並んでいます。この数列の第 ${targetN} 番目の数はいくつですか。`,
+      options: [`${ans4}`, `${ans4 - commonDiff}`, `${ans4 + commonDiff}`, `${ans4 + 1}`],
+      correctIndex: 0,
+      explanation: `はじめの数 ${firstTerm}、ふえる数 ${commonDiff} の等差数列です。\n第 ${targetN} 番目の数 ＝ ${firstTerm} ＋ ${commonDiff} × (${targetN} - 1) ＝ ${ans4} です。`
+    },
+    {
+      id: `g5_m5_${seedBase}`,
+      category: "つるかめ算",
+      categoryName: "特殊算",
+      question: `ツルとカメが合わせて ${totalHeads} 匹います。足の数の合計は ${totalLegs} 本です。カメは何匹いますか。`,
+      options: [`${turtles} 匹`, `${cranes} 匹`, `${turtles + 2} 匹`, `${turtles + 3} 匹`],
+      correctIndex: 0,
+      explanation: `すべてツル（足2本）だと仮定すると足は ${totalHeads * 2} 本。\n不足分 ${totalLegs - totalHeads * 2} 本 ÷ (4 - 2) ＝ ${turtles} 匹がカメです。`
+    },
+    {
+      id: `g5_m6_${seedBase}`,
+      category: "逆算",
+      categoryName: "算数計算",
+      question: `ある数に ${addStep} を足し、その数に ${multStep} をかけ、そこから ${subStep} を引くと ${finalVal} になりました。はじめの数はいくつですか。`,
+      options: [`${origNum}`, `${origNum + 2}`, `${Math.max(1, origNum - 2)}`, `${origNum + addStep}`],
+      correctIndex: 0,
+      explanation: `ゴールから逆算します。\n(${finalVal} ＋ ${subStep}) ÷ ${multStep} - ${addStep} ＝ ${origNum} となります。`
+    },
+    {
+      id: `g5_m7_${seedBase}`,
+      category: "平面図形",
+      categoryName: "図形",
+      question: `たて ${rectH}cm、横 ${rectW}cm の長方形の四つの角から、1辺が ${cutSide}cm の正方形を1つずつ切り落としました。残った図形の面積は何 cm² ですか。`,
+      options: [`${ans7} cm²`, `${rectH * rectW} cm²`, `${ans7 - 4} cm²`, `${ans7 + 10} cm²`],
+      correctIndex: 0,
+      explanation: `元の長方形 ${rectH} × ${rectW} ＝ ${rectH * rectW} cm² から、切り落とした正方形4つ分（${cutSide * cutSide * 4} cm²）を引いて ${ans7} cm² です。`
+    },
+    {
+      id: `g5_m8_${seedBase}`,
+      category: "立体図形",
+      categoryName: "図形",
+      question: `1辺が 1cm の小立方体を積み重ねて、1辺が ${cubeEdge}cm の大きな立方体を作ります。小立方体は全部で何個必要ですか。`,
+      options: [`${ans8} 個`, `${cubeEdge * cubeEdge} 個`, `${cubeEdge * 6} 個`, `${ans8 + cubeEdge} 個`],
+      correctIndex: 0,
+      explanation: `立方体の体積（小立方体の個数）＝ ${cubeEdge} × ${cubeEdge} × ${cubeEdge} ＝ ${ans8} 個です。`
+    },
+    {
+      id: `g5_m9_${seedBase}`,
+      category: "過不足算",
+      categoryName: "特殊算",
+      question: `子どもにノートを配ります。1人に ${lessGive} 冊ずつ配ると ${remBooks} 冊余り、1人に ${moreGive} 冊ずつ配ると ${shortBooks} 冊足りなくなります。子どもは何人いますか。`,
+      options: [`${kids} 人`, `${kids + 2} 人`, `${Math.max(2, kids - 2)} 人`, `${remBooks + shortBooks} 人`],
+      correctIndex: 0,
+      explanation: `過不足算の公式：(余り ＋ 不足) ÷ 1人あたりの差 ＝ (${remBooks} ＋ ${shortBooks}) ÷ (${moreGive} - ${lessGive}) ＝ ${kids} 人です。`
+    },
+    {
+      id: `g5_m10_${seedBase}`,
+      category: "周期算",
+      categoryName: "思考力",
+      question: `「赤、青、黄、白、緑」の 5 種類の色紙がこの順番でくり返し並んでいます。左から数えて ${targetPos} 番目の色紙は何色ですか。`,
+      options: [
+        ans10,
+        colors[(remIdx + 1) % 5],
+        colors[(remIdx + 2) % 5],
+        colors[(remIdx + 3) % 5]
+      ],
+      correctIndex: 0,
+      explanation: `5色の周期で繰り返します。${targetPos} ÷ 5 ＝ ${Math.floor(targetPos / 5)} 余り ${targetPos % 5} なので、「${ans10}」になります。`
+    }
+  ];
+
+  return shuffleArray(pool).map(randomizeQuestionOptions);
+};
+
+// ==========================================
+// Expanded Japanese Question Banks (G2 & G5)
+// ==========================================
+
+const JAPANESE_QUESTIONS_G2_POOL = [
   {
     id: "j2_1",
     category: "漢字の読み",
@@ -183,8 +460,8 @@ const JAPANESE_QUESTIONS_G2 = [
     category: "ことばのきまり",
     categoryName: "語彙文法",
     question: "（　）に はいる つなぎの 言葉は どれですか。\n「あさ起きて、顔を あらった。（　）あさごはんを たべた。」",
-    options: ["しかし", "それから", "だから", "なぜなら"],
-    correctIndex: 1,
+    options: ["それから", "しかし", "だから", "なぜなら"],
+    correctIndex: 0,
     explanation: "じゅんじょよく つづける ときは「それから」を つかいます。"
   },
   {
@@ -210,8 +487,8 @@ const JAPANESE_QUESTIONS_G2 = [
     category: "主語と述語",
     categoryName: "語彙文法",
     question: "つぎの ぶんの「だれが」にあたる ことばは どれですか。\n「かわいい こねこが にわで 元気に あそんでいる。」",
-    options: ["かわいい", "こねこが", "にわで", "あそんでいる"],
-    correctIndex: 1,
+    options: ["こねこが", "かわいい", "にわで", "あそんでいる"],
+    correctIndex: 0,
     explanation: "「だれが（なにが）」にあたるのは「こねこが」です。"
   },
   {
@@ -227,14 +504,14 @@ const JAPANESE_QUESTIONS_G2 = [
     id: "j2_8",
     category: "指示語",
     categoryName: "読解力",
-    question: "「これ」が さしている ものは どれですか。\n「けんた君は 赤い かさを 忘れた。それに 気づいた ぼくは、これ（赤いかさ）を とどけた。」",
-    options: ["けんた君", "赤いかさ", "ぼく", "がっこう"],
-    correctIndex: 1,
+    question: "「これ」が さしている ものは どれですか。\n「けんた君は 赤い かさを 忘れた。それに 気づいた ぼくは、これを とどけた。」",
+    options: ["赤いかさ", "けんた君", "ぼく", "がっこう"],
+    correctIndex: 0,
     explanation: "「これ」は 直前の「赤いかさ」を さしています。"
   },
   {
     id: "j2_9",
-    category: "ことわざ・慣用句",
+    category: "ことわざ",
     categoryName: "語彙文法",
     question: "「早起きは 三文の ◯」の ◯に はいる 言葉は どれですか。",
     options: ["得（とく）", "損（そん）", "円（えん）", "本（ほん）"],
@@ -245,107 +522,68 @@ const JAPANESE_QUESTIONS_G2 = [
     id: "j2_10",
     category: "気持ちのりかい",
     categoryName: "読解力",
-    question: "つぎの ぶんを よんで、下せんぶの ときの 気持ちとして 正しいものは どれですか。\n「かけっこで 1いになれた とき、ぼくは <u>おもわず とびあがって よろこんだ</u>。」",
+    question: "つぎの ぶんを よんで、下せんぶの ときの 気持ちとして 正しいものは どれですか。\n「かけっこで 1いになれた とき、ぼくは おもわず とびあがって よろこんだ。」",
     options: ["とても うれしい 気持ち", "くやしくて かなしい 気持ち", "びくびく している 気持ち", "ねむい 気持ち"],
     correctIndex: 0,
     explanation: "「1いになれて おもわず とびあがった」ことから、とても うれしい 気持ちが わかります。"
-  }
-];
-
-const MATH_QUESTIONS_G5 = [
+  },
   {
-    id: "m_1",
-    category: "計算の工夫",
-    categoryName: "算数計算",
-    question: "次の計算をしなさい。\n37 × 28 + 37 × 72",
-    options: ["3700", "370", "7400", "3600"],
+    id: "j2_11",
+    category: "漢字の読み",
+    categoryName: "国語漢字",
+    question: "「毎日 元気に 走る」の「毎日」の よみかたは どれですか。",
+    options: ["まいにち", "まいとし", "まいつき", "まいしゅう"],
     correctIndex: 0,
-    explanation: "分配法則 (a × b + a × c = a × (b + c)) を使います。\n37 × (28 + 72) = 37 × 100 = 3700 となります。"
+    explanation: "「毎日」は「まいにち」と よみます。"
   },
   {
-    id: "m_2",
-    category: "植木算",
-    categoryName: "特殊算",
-    question: "長さ 60m のまっすぐな道路の片側に、端から端まで 5m おきに木を植えます。木は全部で何本必要ですか。",
-    options: ["12 本", "13 本", "14 本", "11 本"],
-    correctIndex: 1,
-    explanation: "両端に植える植木算です。\n間の数 ＝ 60 ÷ 5 ＝ 12（個）。\n木の数 ＝ 12 ＋ 1 ＝ 13（本）となります。"
+    id: "j2_12",
+    category: "反対の言葉",
+    categoryName: "語彙文法",
+    question: "「強い（つよい）」の はんたいの いみの 言葉は どれですか。",
+    options: ["弱い（よわい）", "重い（おもい）", "早い（はやい）", "暗い（くらい）"],
+    correctIndex: 0,
+    explanation: "「強い」の はんたいは「弱い（よわい）」です。"
   },
   {
-    id: "m_3",
-    category: "和差算",
-    categoryName: "特殊算",
-    question: "AさんとBさんの年齢の和は 28 歳で、AさんはBさんより 6 歳年上です。Aさんは何歳ですか。",
-    options: ["11 歳", "17 歳", "22 歳", "14 歳"],
-    correctIndex: 1,
-    explanation: "和差算の公式を使います。\nAさん（大きい方）＝ (和 ＋ 差) ÷ 2 ＝ (28 ＋ 6) ÷ 2 ＝ 17 歳です。"
+    id: "j2_13",
+    category: "ものの数え方",
+    categoryName: "語彙文法",
+    question: "えんぴつを 数える ときに つかう 言葉は どれですか。",
+    options: ["1本（いっぽん）", "1まい（いちまい）", "1さつ（いっさつ）", "1ひき（いっぴき）"],
+    correctIndex: 0,
+    explanation: "えんぴつのような ほそ長い ものは「本（ほん）」で 数えます。"
   },
   {
-    id: "m_4",
-    category: "等差数列",
-    categoryName: "思考力",
-    question: "3, 7, 11, 15, 19, … のように一定の決まりで数が並んでいます。この数列の第 10 番目の数はいくつですか。",
-    options: ["35", "39", "43", "36"],
-    correctIndex: 1,
-    explanation: "初項 3、公差 4 の等差数列です。\n第 10 番目の数 ＝ 3 ＋ 4 × (10 - 1) ＝ 3 ＋ 36 ＝ 39 です。"
+    id: "j2_14",
+    category: "ことばのきまり",
+    categoryName: "語彙文法",
+    question: "（　）に はいる つなぎの 言葉は どれですか。\n「雨が ふりそうだ。（　）、かさを もって いこう。」",
+    options: ["だから", "しかし", "ところが", "たとえば"],
+    correctIndex: 0,
+    explanation: "りゆうを うけて つづける ときは「だから」を つかいます。"
   },
   {
-    id: "m_5",
-    category: "つるかめ算",
-    categoryName: "特殊算",
-    question: "ツルとカメが合わせて 10 匹います。足の数の合計は 28 本です。カメは何匹いますか。",
-    options: ["2 匹", "4 匹", "6 匹", "8 匹"],
-    correctIndex: 1,
-    explanation: "すべてツル（足2本）だと仮定すると、足は 10 × 2 ＝ 20 本。\n不足分 ＝ 28 - 20 ＝ 8 本。\nツル1匹をカメ（足4本）に変えると足が2本増えるので、カメ ＝ 8 ÷ (4 - 2) ＝ 4 匹です。"
+    id: "j2_15",
+    category: "漢字のかき",
+    categoryName: "国語漢字",
+    question: "「おともだち」の「とも」の かんじは どれですか。",
+    options: ["友", "右", "左", "有"],
+    correctIndex: 0,
+    explanation: "「友達」の「友（とも）」が 正しい かんじです。"
   },
   {
-    id: "m_6",
-    category: "逆算",
-    categoryName: "算数計算",
-    question: "ある数に 5 を足し、その数に 3 をかけ、そこから 8 を引き、最後に 2 で割ると 11 になりました。はじめの数はいくつですか。",
-    options: ["3", "5", "7", "9"],
-    correctIndex: 1,
-    explanation: "逆算（ゴールから逆算）します。\n11 × 2 ＝ 22\n22 ＋ 8 ＝ 30\n30 ÷ 3 ＝ 10\n10 - 5 ＝ 5 となります。"
-  },
-  {
-    id: "m_7",
-    category: "平面図形",
-    categoryName: "図形",
-    question: "たて 6cm、横 10cm の長方形の四つの角から、1辺が 1cm の正方形を1つずつ切り落としました。残った図形の面積は何 cm² ですか。",
-    options: ["52 cm²", "56 cm²", "60 cm²", "48 cm²"],
-    correctIndex: 1,
-    explanation: "元の長方形の面積 ＝ 6 × 10 ＝ 60 cm²。\n切り落とした正方形4つの面積 ＝ 1 × 1 × 4 ＝ 4 cm²。\n残りの面積 ＝ 60 - 4 ＝ 56 cm² です。"
-  },
-  {
-    id: "m_8",
-    category: "立体図形",
-    categoryName: "図形",
-    question: "1辺が 1cm の小立方体を積み重ねて、1辺が 3cm の大きな立方体を作ります。小立方体は全部で何個必要ですか。",
-    options: ["9 個", "18 個", "27 個", "36 個"],
-    correctIndex: 2,
-    explanation: "立方体の体積（小立方体の個数）＝ 3 × 3 × 3 ＝ 27 個です。"
-  },
-  {
-    id: "m_9",
-    category: "過不足算",
-    categoryName: "特殊算",
-    question: "子どもにノートを配ります。1人に 4 冊ずつ配ると 10 冊余り、1人に 6 冊ずつ配ると 4 冊足りなくなります。子どもは何人いますか。",
-    options: ["5 人", "7 人", "10 人", "12 人"],
-    correctIndex: 1,
-    explanation: "差集め算・過不足算の考え方です。\n(余り ＋ 不足) ÷ 1人あたりの配る差 ＝ 子どもの人数。\n(10 ＋ 4) ÷ (6 - 4) ＝ 14 ÷ 2 ＝ 7 人となります。"
-  },
-  {
-    id: "m_10",
-    category: "周期算",
-    categoryName: "思考力",
-    question: "「赤、青、黄、白、緑」の 5 種類の色紙がこの順番でくり返し並んでいます。左から数えて 43 番目の色紙は何色ですか。",
-    options: ["赤", "青", "黄", "白"],
-    correctIndex: 2,
-    explanation: "5色の周期（赤・青・黄・白・緑）で繰り返します。\n43 ÷ 5 ＝ 8 周期 余り 3。\n余りが 3 なので、3 番目の色である「黄」になります。"
+    id: "j2_16",
+    category: "慣用句",
+    categoryName: "語彙文法",
+    question: "とても おどろいた ときの ようすを あらわす 言葉「目を ◯くする」の ◯に はいるのは どれですか。",
+    options: ["丸", "三角", "四角", "細"],
+    correctIndex: 0,
+    explanation: "おどろいて 目を 大きく ひらく ようすを「目を 丸くする」と いいます。"
   }
 ];
 
-const JAPANESE_QUESTIONS_G5 = [
+const JAPANESE_QUESTIONS_G5_POOL = [
   {
     id: "j_1",
     category: "漢字の読み",
@@ -360,8 +598,8 @@ const JAPANESE_QUESTIONS_G5 = [
     category: "対義語",
     categoryName: "語彙文法",
     question: "「複雑（ふくざつ）」の対義語（反対の意味の言葉）として、最も適切なものはどれですか。",
-    options: ["簡単", "単純", "容易", "明快"],
-    correctIndex: 1,
+    options: ["単純", "簡単", "容易", "明快"],
+    correctIndex: 0,
     explanation: "「複雑」の対義語は「単純」です。"
   },
   {
@@ -369,8 +607,8 @@ const JAPANESE_QUESTIONS_G5 = [
     category: "慣用句",
     categoryName: "語彙文法",
     question: "非常に驚いてあきれる様子を表す慣用句「開いた◯がふさがらない」の◯に入る言葉はどれですか。",
-    options: ["目", "口", "耳", "手"],
-    correctIndex: 1,
+    options: ["口", "目", "耳", "手"],
+    correctIndex: 0,
     explanation: "正解は「口」で、「開いた口がふさがらない」となります。"
   },
   {
@@ -378,8 +616,8 @@ const JAPANESE_QUESTIONS_G5 = [
     category: "部首",
     categoryName: "国語漢字",
     question: "漢字の「泳」「海」「池」に共通する部首（へん）の名前は何ですか。",
-    options: ["きへん", "さんずい", "にんべん", "うかんむり"],
-    correctIndex: 1,
+    options: ["さんずい", "きへん", "にんべん", "うかんむり"],
+    correctIndex: 0,
     explanation: "水に関係する漢字に共通する部首は「さんずい（氵）」です。"
   },
   {
@@ -387,8 +625,8 @@ const JAPANESE_QUESTIONS_G5 = [
     category: "主語と述語",
     categoryName: "語彙文法",
     question: "次の文の「主語」にあたる部分はどれですか。\n「昨日、大きな黒い犬が公園で元気に走っていた。」",
-    options: ["昨日", "大きな黒い犬が", "公園で", "元気に走っていた"],
-    correctIndex: 1,
+    options: ["大きな黒い犬が", "昨日", "公園で", "元気に走っていた"],
+    correctIndex: 0,
     explanation: "「何が（誰が）」にあたる部分は「大きな黒い犬が」です。"
   },
   {
@@ -396,8 +634,8 @@ const JAPANESE_QUESTIONS_G5 = [
     category: "接続詞",
     categoryName: "語彙文法",
     question: "文中の（　）に入る最も適切な接続詞はどれですか。\n「今日は朝から強い雨が降っていた。（　）、サッカーの試合は予定通り行われた。」",
-    options: ["だから", "しかし", "つまり", "また"],
-    correctIndex: 1,
+    options: ["しかし", "だから", "つまり", "また"],
+    correctIndex: 0,
     explanation: "前後の文が逆の内容（雨だが実施した）をつなぐため「しかし（逆接）」が入ります。"
   },
   {
@@ -405,8 +643,8 @@ const JAPANESE_QUESTIONS_G5 = [
     category: "指示語",
     categoryName: "読解力",
     question: "次の文の指示語「これ」が指している内容として最も適切なものはどれですか。\n「たけし君は毎日コツコツと漢字の練習を続けた。これがテストでの満点につながった。」",
-    options: ["テストで満点を取ったこと", "毎日コツコツと漢字の練習を続けたこと", "漢字の練習問題集のこと", "たけし君のこと"],
-    correctIndex: 1,
+    options: ["毎日コツコツと漢字の練習を続けたこと", "テストで満点を取ったこと", "漢字の練習問題集のこと", "たけし君のこと"],
+    correctIndex: 0,
     explanation: "指示語「これ」は直前の動作「毎日コツコツと漢字の練習を続けたこと」を指しています。"
   },
   {
@@ -414,8 +652,13 @@ const JAPANESE_QUESTIONS_G5 = [
     category: "ことわざ",
     categoryName: "語彙文法",
     question: "「失敗は成功の母（はは）」ということわざの意味として最も適切なものはどれですか。",
-    options: ["お母さんは何でも成功させてくれるということ", "失敗しても反省して原因を改善すれば次の成功につながるということ", "一度失敗したら二度と成功できないということ", "失敗しないように何もしないのが一番であるということ"],
-    correctIndex: 1,
+    options: [
+      "失敗しても反省して原因を改善すれば次の成功につながるということ",
+      "お母さんは何でも成功させてくれるということ",
+      "一度失敗したら二度と成功できないということ",
+      "失敗しないように何もしないのが一番であるということ"
+    ],
+    correctIndex: 0,
     explanation: "失敗の原因を振り返って工夫することが成功の源になるという意味です。"
   },
   {
@@ -423,9 +666,9 @@ const JAPANESE_QUESTIONS_G5 = [
     category: "四字熟語",
     categoryName: "語彙文法",
     question: "「一生懸命（いっしょうけんめい）」の語源であり、命がけで物事に取り組む様子を表す元の言葉（四字熟語）はどれですか。",
-    options: ["一期一会", "一所懸命", "自業自得", "試行錯誤"],
-    correctIndex: 1,
-    explanation: "「一所懸命（いっしょけんめい）」は武士が1つの領地を命がけで守ったことに由来し、「一生懸命」の語源となった四字熟語です。"
+    options: ["一所懸命", "一期一会", "自業自得", "試行錯誤"],
+    correctIndex: 0,
+    explanation: "「一所懸命（いっしょけんめい）」は武士が1つの領地を命がけで守ったことに由来します。"
   },
   {
     id: "j_10",
@@ -433,17 +676,76 @@ const JAPANESE_QUESTIONS_G5 = [
     categoryName: "読解力",
     question: "次の文章を読んで、下線部のときの「僕」の心情として最も適切なものはどれですか。\n「ライバルの健太が自分より高い点数を取ったのを知ったとき、僕は何も言わずに思わず拳を強く握りしめた。」",
     options: [
-      "健太の努力を素直に称えて喜んでいる気持ち",
       "悔しくて次は絶対に負けたくないという強い気持ち",
+      "健太の努力を素直に称えて喜んでいる気持ち",
       "テストが終わって心から安心している気持ち",
       "悲しくて何も考えられない気持ち"
     ],
-    correctIndex: 1,
-    explanation: "「何も言わずに思わず拳を強く握りしめた」という身体的描写から、悔しさと次への強いライバル心・闘志が読み取れます。"
+    correctIndex: 0,
+    explanation: "「何も言わずに思わず拳を強く握りしめた」描写から、悔しさと次への強い闘志が読み取れます。"
+  },
+  {
+    id: "j_11",
+    category: "漢字の読み",
+    categoryName: "国語漢字",
+    question: "「状況を正確に把握する」の「把握」の正しい読み方はどれですか。",
+    options: ["はあく", "はやく", "ばあく", "はこく"],
+    correctIndex: 0,
+    explanation: "「把握」は「はあく」と読み、しっかりつかむという意味です。"
+  },
+  {
+    id: "j_12",
+    category: "対義語",
+    categoryName: "語彙文法",
+    question: "「具体的（ぐたいてき）」の対義語として最も適切なものはどれですか。",
+    options: ["抽象的", "一般的", "客観的", "消極的"],
+    correctIndex: 0,
+    explanation: "「具体的」の対義語は「抽象的（ちゅうしょうてき）」です。"
+  },
+  {
+    id: "j_13",
+    category: "類義語",
+    categoryName: "語彙文法",
+    question: "「推測（すいそく）」と最も意味が近い言葉（類義語）はどれですか。",
+    options: ["推察", "観測", "計測", "予測"],
+    correctIndex: 0,
+    explanation: "ある根拠をもとに推し量ることを「推測」「推察」といいます。"
+  },
+  {
+    id: "j_14",
+    category: "四字熟語",
+    categoryName: "語彙文法",
+    question: "「十人◯色（じゅうにんといろ）」の◯に入る漢字はどれですか。人それぞれ考えや好みが違うという意味です。",
+    options: ["十", "百", "千", "万"],
+    correctIndex: 0,
+    explanation: "正解は「十人十色（じゅうにんといろ）」です。"
+  },
+  {
+    id: "j_15",
+    category: "接続詞",
+    categoryName: "語彙文法",
+    question: "文中の（　）に入る最も適切な接続詞はどれですか。\n「地球温暖化が進んでいる。（　）、北極の氷が年々溶け続けているのだ。」",
+    options: ["つまり", "しかし", "それでも", "ところが"],
+    correctIndex: 0,
+    explanation: "前の文の内容を言い換えてまとめる「つまり」が最も適切です。"
+  },
+  {
+    id: "j_16",
+    category: "要旨把握",
+    categoryName: "読解力",
+    question: "次の文章で、筆者が最も伝えたいこと（要旨）はどれですか。\n「失敗を恐れて何もしなければ傷つくことはない。しかし、それでは成長も得られない。小さな挑戦を積み重ねることこそが未来を開く鍵なのだ。」",
+    options: [
+      "失敗を恐れず小さな挑戦を続けることが成長につながる",
+      "傷つかないように慎重に行動することが最も大切である",
+      "未来を開くためには一度も失敗しない計画が必要である",
+      "大きな成功を収める人は最初から失敗をしない"
+    ],
+    correctIndex: 0,
+    explanation: "筆者は「小さな挑戦を積み重ねることこそが未来を開く鍵」と結論づけています。"
   }
 ];
 
-const UYGHUR_QUESTIONS = [
+const UYGHUR_QUESTIONS_POOL = [
   {
     id: "u_1",
     category: "単語・意味",
@@ -467,8 +769,8 @@ const UYGHUR_QUESTIONS = [
     category: "数・数字",
     categoryName: "ウイグル語",
     question: "ウイグル語で数字の「5」を表す言葉（Besh）はどれですか。",
-    options: ["بىر (Bir - 1)", "ئۈچ (Oech - 3)", "بەش (Besh - 5)", "ئون (On - 10)"],
-    correctIndex: 2,
+    options: ["بەش (Besh)", "بىر (Bir)", "ئۈچ (Oech)", "ئون (On)"],
+    correctIndex: 0,
     explanation: "「بەش (Besh)」は数字の「5」を表します。"
   },
   {
@@ -476,7 +778,7 @@ const UYGHUR_QUESTIONS = [
     category: "家族・人名",
     categoryName: "ウイグル語",
     question: "ウイグル語で「お母さん」を表す言葉（Ana）はどれですか。",
-    options: ["ئانا (Ana)", "ئتا (Ata)", "ئاكا (Aka)", "سىڭىل (Singil)"],
+    options: ["ئانا (Ana)", "ئاتا (Ata)", "ئاكا (Aka)", "سىڭىل (Singil)"],
     correctIndex: 0,
     explanation: "「ئانا (Ana)」は「お母さん」を意味します。"
   },
@@ -533,147 +835,108 @@ const UYGHUR_QUESTIONS = [
     options: ["良い一日を（こんにちは）", "おやすみなさい", "さようなら", "いただきます"],
     correctIndex: 0,
     explanation: "「خەيرلىك كۈن (Khayrlik kuen)」は「良い一日を / 日中の挨拶」を意味します。"
+  },
+  {
+    id: "u_11",
+    category: "家族・人名",
+    categoryName: "ウイグル語",
+    question: "ウイグル語で「お父さん」を表す言葉（Ata）はどれですか。",
+    options: ["ئاتا (Ata)", "ئانا (Ana)", "ئاچا (Acha)", "ئىنى (Ini)"],
+    correctIndex: 0,
+    explanation: "「ئاتا (Ata)」は「お父さん」を意味します。"
+  },
+  {
+    id: "u_12",
+    category: "食べ物・飲み物",
+    categoryName: "ウイグル語",
+    question: "ウイグル語で「水」を表す言葉（Su）はどれですか。",
+    options: ["سۇ (Su)", "چاي (Chay)", "نان (Nan)", "سۈت (Suet)"],
+    correctIndex: 0,
+    explanation: "「سۇ (Su)」は「水」を意味します。"
   }
 ];
 
-// Helper: Shuffle Array
-const shuffleArray = (array) => {
-  const arr = [...array];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-};
-
-// Daily Dynamic Questions Generator
-const generateDailyDynamicQuestions = (grade) => {
+// Full Dynamic Generator combining freshly generated Math + shuffled Japanese pool
+const generateDailyDynamicQuestions = (grade, attemptOffset = 0) => {
   const today = new Date();
-  const dateSeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
-  
-  const seededRand = (offset) => {
-    const x = Math.sin(dateSeed + offset) * 10000;
-    return x - Math.floor(x);
-  };
+  const dateSeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate() + attemptOffset * 37;
 
   if (grade === 'grade2') {
-    const a1 = Math.floor(seededRand(1) * 15) + 15;
-    const b1 = Math.floor(seededRand(2) * 10) + 10;
-    const c1 = 50 - a1;
-    const ans1 = 50 + b1;
-
-    const dynamicMathG2 = [
-      {
-        id: `m2_dyn_1_${dateSeed}`,
-        category: "計算の工夫",
-        categoryName: "算数計算",
-        question: `つぎの けいさんを くふうして しなさい。\n${a1} + ${b1} + ${c1}`,
-        options: [`${ans1}`, `${ans1 - 5}`, `${ans1 + 10}`, `${ans1 - 10}`],
-        correctIndex: 0,
-        explanation: `${a1} と ${c1} を さきに たすと 50 になります。\n50 + ${b1} = ${ans1} と かんたんに けいさんできます。`
-      },
-      ...MATH_QUESTIONS_G2.slice(1)
-    ];
-
-    return shuffleArray([...dynamicMathG2, ...JAPANESE_QUESTIONS_G2]);
+    const math10 = generateDynamicMathG2(dateSeed);
+    const jp10 = shuffleArray(JAPANESE_QUESTIONS_G2_POOL).slice(0, 10).map(randomizeQuestionOptions);
+    return [...math10, ...jp10];
   } else {
-    const multX = (Math.floor(seededRand(1) * 20) + 12) * 3;
-    const numY1 = Math.floor(seededRand(2) * 30) + 25;
-    const numY2 = 100 - numY1;
-    const multAns = multX * 100;
-
-    const interval = (Math.floor(seededRand(3) * 3) + 2) * 2;
-    const count = Math.floor(seededRand(4) * 8) + 10;
-    const totalDist = interval * count;
-    const treeAns = count + 1;
-
-    const dynamicMath = [
-      {
-        id: `m_dyn_1_${dateSeed}`,
-        category: "計算の工夫",
-        categoryName: "算数計算",
-        question: `次の計算をしなさい。\n${multX} × ${numY1} + ${multX} × ${numY2}`,
-        options: [`${multAns}`, `${multAns / 10}`, `${multAns * 2}`, `${multAns - 100}`],
-        correctIndex: 0,
-        explanation: `分配法則 (${multX} × (${numY1} + ${numY2})) を使います。\n${multX} × 100 = ${multAns} となります。`
-      },
-      {
-        id: `m_dyn_2_${dateSeed}`,
-        category: "植木算",
-        categoryName: "特殊算",
-        question: `長さ ${totalDist}m のまっすぐな道路の片側に、端から端まで ${interval}m おきに木を植えます。木は全部で何本必要ですか。`,
-        options: [`${treeAns - 1} 本`, `${treeAns} 本`, `${treeAns + 1} 本`, `${treeAns - 2} 本`],
-        correctIndex: 1,
-        explanation: `両端に植える植木算です。\n間の数 ＝ ${totalDist} ÷ ${interval} ＝ ${count}（個）。\n木の数 ＝ ${count} ＋ 1 ＝ ${treeAns}（本）となります。`
-      },
-      ...MATH_QUESTIONS_G5.slice(2)
-    ];
-
-    const mathShuffled = shuffleArray(dynamicMath).slice(0, 10);
-    const jpShuffled = shuffleArray(JAPANESE_QUESTIONS_G5).slice(0, 10);
-
-    return [...mathShuffled, ...jpShuffled];
+    const math10 = generateDynamicMathG5(dateSeed);
+    const jp10 = shuffleArray(JAPANESE_QUESTIONS_G5_POOL).slice(0, 10).map(randomizeQuestionOptions);
+    return [...math10, ...jp10];
   }
 };
 
-const fetchAIDailyQuestions = async (subject = 'combined', grade = 'grade2') => {
+// AI Question Generator with Optional User-Configured Gemini API Key & Robust Dynamic Fallback
+const fetchAIDailyQuestions = async (subject = 'combined', grade = 'grade2', attemptOffset = 0) => {
   const gradeLabel = grade === 'grade2' ? '小学2年生' : '小学5年生';
-  
-  const systemPrompt = `あなたは四谷大塚の入塾テスト・中学受験の算数と国語の専門講師です。
-${gradeLabel}対象の四谷大塚入塾テストレベルの選択肢付き問題を生成してください。
-レスポンスは必ず指定されたJSONフォーマットのみで返してください。`;
-
-  const userQuery = `四谷大塚の入塾テスト対策として、${gradeLabel}向けの${subject === 'math' ? '算数10問' : subject === 'japanese' ? '国語10問' : '算数10問と国語10問（合計20問）'}の新作テスト問題を作成してください。`;
-
-  const apiKey = "";
-  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
-
-  const payload = {
-    contents: [{ parts: [{ text: userQuery }] }],
-    systemInstruction: { parts: [{ text: systemPrompt }] },
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: "ARRAY",
-        items: {
-          type: "OBJECT",
-          properties: {
-            id: { type: "STRING" },
-            category: { type: "STRING" },
-            categoryName: { type: "STRING" },
-            question: { type: "STRING" },
-            options: { type: "ARRAY", items: { type: "STRING" } },
-            correctIndex: { type: "INTEGER" },
-            explanation: { type: "STRING" }
-          },
-          required: ["id", "category", "categoryName", "question", "options", "correctIndex", "explanation"]
-        }
-      }
-    }
-  };
-
+  let apiKey = '';
   try {
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) throw new Error("API call failed");
-
-    const result = await response.json();
-    const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (jsonText) {
-      const parsed = JSON.parse(jsonText);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    }
-  } catch (err) {
-    console.warn("AI Question generation falling back to dynamic daily pool:", err);
+    apiKey = localStorage.getItem('learndaily_gemini_api_key') || '';
+  } catch {
+    apiKey = '';
   }
 
-  return generateDailyDynamicQuestions(grade);
+  if (apiKey) {
+    const systemPrompt = `あなたは四谷大塚の入塾テスト・中学受験の算数と国語の専門講師です。
+${gradeLabel}対象の四谷大塚入塾テストレベルの4択問題を生成してください。
+毎回異なる数値・題材を使い、レスポンスは必ず指定されたJSON配列のみで返してください。`;
+
+    const userQuery = `四谷大塚の入塾テスト対策として、${gradeLabel}向けの算数10問と国語10問（合計20問）の完全新作テスト問題を作成してください（本日の日付: ${getTodayDateString()}、回数シード: ${attemptOffset}）。`;
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+    const payload = {
+      contents: [{ parts: [{ text: userQuery }] }],
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "ARRAY",
+          items: {
+            type: "OBJECT",
+            properties: {
+              id: { type: "STRING" },
+              category: { type: "STRING" },
+              categoryName: { type: "STRING" },
+              question: { type: "STRING" },
+              options: { type: "ARRAY", items: { type: "STRING" } },
+              correctIndex: { type: "INTEGER" },
+              explanation: { type: "STRING" }
+            },
+            required: ["id", "category", "categoryName", "question", "options", "correctIndex", "explanation"]
+          }
+        }
+      }
+    };
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (jsonText) {
+          const parsed = JSON.parse(jsonText);
+          if (Array.isArray(parsed) && parsed.length >= 10) {
+            return parsed.map(randomizeQuestionOptions);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Gemini API call failed, using full dynamic generator:", err);
+    }
+  }
+
+  return generateDailyDynamicQuestions(grade, attemptOffset);
 };
 
 // Helper to render subject display title
@@ -682,30 +945,42 @@ const getSubjectLabel = (subject) => {
     case 'math': return '算数テスト';
     case 'japanese': return '国語テスト';
     case 'uyghur': return 'ウイグル語テスト';
-    case 'daily': return '本日のAI模試';
+    case 'daily': return '本日の日替わり模試';
     case 'weakness': return '🔥 弱点克服復習';
     default: return '算国総合模試';
   }
 };
 
 export default function App() {
-  // Auth & Student Profile States
+  // ==========================================
+  // Strict Authentication States (No Guest Mode)
+  // ==========================================
   const [user, setUser] = useState(null);
-  const [studentName, setStudentName] = useState(() => {
+  const [authLoading, setAuthLoading] = useState(true);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState('');
+
+  // Email/Password Auth Form States
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [childNameInput, setChildNameInput] = useState('');
+
+  // Inline Display Name Editor Modal State
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editNameDraft, setEditNameDraft] = useState('');
+
+  // Optional Gemini API Key in Admin Panel
+  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState(() => {
     try {
-      return localStorage.getItem('learn_daily_student_name') || 'ゲスト生徒';
+      return localStorage.getItem('learndaily_gemini_api_key') || '';
     } catch {
-      return 'ゲスト生徒';
+      return '';
     }
   });
-  const [authError, setAuthError] = useState(null);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [apiKeySavedToast, setApiKeySavedToast] = useState(false);
 
-  // Admin Google Authentication States (Only peruqsidiq@gmail.com)
-  const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
-  const [adminAuthError, setAdminAuthError] = useState('');
-  const [pendingAdminOpen, setPendingAdminOpen] = useState(false);
-
+  // Check if current logged-in user is the Parent Admin
   const isParentAdmin = useMemo(() => {
     return Boolean(
       user &&
@@ -713,6 +988,14 @@ export default function App() {
       user.email &&
       user.email.toLowerCase() === ADMIN_EMAIL
     );
+  }, [user]);
+
+  // Display name of current logged-in user
+  const currentUserDisplayName = useMemo(() => {
+    if (!user) return '';
+    if (user.displayName && user.displayName.trim()) return user.displayName.trim();
+    if (user.email) return user.email.split('@')[0];
+    return '学習メンバー';
   }, [user]);
 
   // Selected Child Filter & Historical Time Filter in Admin/History Mode
@@ -724,12 +1007,14 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('home'); // 'home', 'quiz', 'results', 'history', 'admin'
   const [selectedSubject, setSelectedSubject] = useState('math');
   const [selectedGrade, setSelectedGrade] = useState('grade2');
+  const [sessionAttemptCount, setSessionAttemptCount] = useState(0);
   
   // Exam Countdown Timer Mode States
   const [isTimerEnabled, setIsTimerEnabled] = useState(true);
   const [timeLeftSec, setTimeLeftSec] = useState(900);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [wasAutoSubmittedByTimeout, setWasAutoSubmittedByTimeout] = useState(false);
+  const [timedOutTrigger, setTimedOutTrigger] = useState(false);
 
   // Quiz Runner States
   const [currentQuestions, setCurrentQuestions] = useState([]);
@@ -752,31 +1037,86 @@ export default function App() {
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const todayStr = getTodayDateString();
 
-  // Load Local Backup
+  // Auth Observer: Enforces real login (automatically signs out any leftover anonymous/guest session)
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('learn_daily_family_history');
-      if (saved) {
-        setHistoryDocs(JSON.parse(saved));
+    getRedirectResult(auth).catch((err) => {
+      console.warn("Redirect login notice:", err);
+      if (err?.code === 'auth/unauthorized-domain') {
+        setLoginError("現在のWebドメインがFirebaseで未承認です。Firebase Consoleの「承認済みドメイン」に現在のURLを追加してください。");
       }
-    } catch (e) {
-      console.warn("Could not load local history:", e);
-    }
+    });
+
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser && currentUser.isAnonymous) {
+        await signOut(auth);
+        setUser(null);
+        setAuthLoading(false);
+        return;
+      }
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
+
+  // Redirect away from admin tab if user is not ADMIN_EMAIL
+  useEffect(() => {
+    if (activeTab === 'admin' && !isParentAdmin) {
+      setActiveTab('home');
+    }
+  }, [activeTab, isParentAdmin]);
+
+  // Sync Shared Family Results from Firestore (only when logged in)
+  useEffect(() => {
+    if (!user || user.isAnonymous) {
+      setHistoryDocs([]);
+      return;
+    }
+
+    try {
+      const familyResultsRef = collection(db, 'artifacts', appId, 'family_results');
+      const unsubscribe = onSnapshot(
+        familyResultsRef,
+        (snapshot) => {
+          const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          setHistoryDocs(items);
+          try {
+            localStorage.setItem('learn_daily_family_history', JSON.stringify(items));
+          } catch {}
+        },
+        (error) => {
+          console.warn("Firestore family results listener error:", error);
+          try {
+            const saved = localStorage.getItem('learn_daily_family_history');
+            if (saved) setHistoryDocs(JSON.parse(saved));
+          } catch {}
+        }
+      );
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Firestore subscription error:", e);
+    }
+  }, [user]);
+
+  // Filter history for current student (non-admin sees their own records, admin sees all)
+  const myHistoryDocs = useMemo(() => {
+    if (!user) return [];
+    if (isParentAdmin) return historyDocs;
+    return historyDocs.filter(
+      d => d.userUid === user.uid || (user.email && d.userEmail === user.email)
+    );
+  }, [historyDocs, user, isParentAdmin]);
 
   // Extract Wrong Questions for Weakness Conquest Mode
   const wrongQuestionsPool = useMemo(() => {
-    if (!historyDocs || historyDocs.length === 0) return [];
+    if (!myHistoryDocs || myHistoryDocs.length === 0) return [];
 
-    const relevantDocs = studentName !== 'ゲスト生徒'
-      ? historyDocs.filter(d => d.userDisplayName === studentName)
-      : historyDocs;
-
-    const docsToScan = relevantDocs.length > 0 ? relevantDocs : historyDocs;
     const seenQuestions = new Set();
     const collected = [];
 
-    docsToScan.forEach((docItem) => {
+    myHistoryDocs.forEach((docItem) => {
       if (!Array.isArray(docItem.answeredBreakdown)) return;
       docItem.answeredBreakdown.forEach((entry) => {
         if (!entry.isCorrect && entry.question && Array.isArray(entry.options) && !seenQuestions.has(entry.question)) {
@@ -795,14 +1135,14 @@ export default function App() {
     });
 
     return collected;
-  }, [historyDocs, studentName]);
+  }, [myHistoryDocs]);
 
-  // Compute Daily Streak
+  // Compute Daily Streak for Current User
   const streakInfo = useMemo(() => {
-    if (!historyDocs || historyDocs.length === 0) return { streak: 0, testedToday: false };
+    if (!myHistoryDocs || myHistoryDocs.length === 0) return { streak: 0, testedToday: false };
 
     const dates = Array.from(new Set(
-      historyDocs.map(item => {
+      myHistoryDocs.map(item => {
         if (item.dateIso) return item.dateIso;
         if (!item.timestamp) return null;
         const d = new Date(item.timestamp);
@@ -830,97 +1170,9 @@ export default function App() {
     }
 
     return { streak, testedToday };
-  }, [historyDocs, todayStr]);
+  }, [myHistoryDocs, todayStr]);
 
-  // Auth Initialization & Observer (Handles Google Redirect & Popup Auth)
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        const redirectRes = await getRedirectResult(auth);
-        if (redirectRes?.user) {
-          const email = redirectRes.user.email?.toLowerCase();
-          if (email === ADMIN_EMAIL) {
-            setShowAdminLoginModal(false);
-            setAdminAuthError('');
-            setActiveTab('admin');
-          } else {
-            setAdminAuthError(`ログイン中のアカウント（${redirectRes.user.email}）には管理者権限がありません。${ADMIN_EMAIL} でログインしてください。`);
-            setShowAdminLoginModal(true);
-          }
-          return;
-        }
-      } catch (err) {
-        console.warn("Redirect result notice:", err);
-      }
-
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else if (!auth.currentUser) {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        console.error("Auth initialization notice:", err);
-      }
-    };
-
-    initAuth();
-
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      if (currentUser && !currentUser.isAnonymous) {
-        const email = currentUser.email?.toLowerCase();
-        if (email === ADMIN_EMAIL) {
-          setAdminAuthError('');
-          setShowAdminLoginModal(false);
-          if (pendingAdminOpen) {
-            setPendingAdminOpen(false);
-            setActiveTab('admin');
-          }
-        } else if (pendingAdminOpen) {
-          setPendingAdminOpen(false);
-          setAdminAuthError(`このアカウント（${currentUser.email}）には管理者権限がありません。${ADMIN_EMAIL} でログインしてください。`);
-          setShowAdminLoginModal(true);
-        }
-      }
-    });
-
-    return () => unsubscribe();
-  }, [pendingAdminOpen]);
-
-  // Redirect away from admin tab if user logs out or switches to non-admin account
-  useEffect(() => {
-    if (activeTab === 'admin' && !isParentAdmin) {
-      setActiveTab('home');
-      setShowAdminLoginModal(true);
-    }
-  }, [activeTab, isParentAdmin]);
-
-  // Sync Shared Family Results from Firestore
-  useEffect(() => {
-    try {
-      const familyResultsRef = collection(db, 'artifacts', appId, 'family_results');
-      const unsubscribe = onSnapshot(
-        familyResultsRef,
-        (snapshot) => {
-          const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-          if (items.length > 0) {
-            setHistoryDocs(items);
-            localStorage.setItem('learn_daily_family_history', JSON.stringify(items));
-          }
-        },
-        (error) => {
-          console.warn("Firestore family results listener error:", error);
-        }
-      );
-      return () => unsubscribe();
-    } catch (e) {
-      console.warn("Firestore subscription error:", e);
-    }
-  }, []);
-
-  // Quiz Timer Effect
+  // Quiz Timer Effect (Pure state tick without nested state updates)
   useEffect(() => {
     if (activeTab !== 'quiz' || currentQuestions.length === 0) return;
 
@@ -931,12 +1183,7 @@ export default function App() {
         setTimeLeftSec(prev => {
           if (prev <= 1) {
             clearInterval(intervalId);
-            const { userAnswers: curAns, currentIdx: curIdx, selectedOption: curOpt } = latestQuizStateRef.current;
-            const finalized = [...curAns];
-            if (curOpt !== null) {
-              finalized[curIdx] = curOpt;
-            }
-            finishQuiz(finalized, true);
+            setTimedOutTrigger(true);
             return 0;
           }
           return prev - 1;
@@ -947,32 +1194,30 @@ export default function App() {
     return () => clearInterval(intervalId);
   }, [activeTab, isTimerEnabled, currentQuestions.length]);
 
-  // Google Login Handler (Used for Admin Verification & Account Switching)
-  const handleAdminGoogleSignIn = async () => {
+  // Handle Timeout Auto-Submit safely outside state updater
+  useEffect(() => {
+    if (!timedOutTrigger || activeTab !== 'quiz') return;
+    setTimedOutTrigger(false);
+    const { userAnswers: curAns, currentIdx: curIdx, selectedOption: curOpt } = latestQuizStateRef.current;
+    const finalized = [...curAns];
+    if (curOpt !== null) {
+      finalized[curIdx] = curOpt;
+    }
+    finishQuiz(finalized, true);
+  }, [timedOutTrigger, activeTab]);
+
+  // ==========================================
+  // Authentication Handlers (Google & Email/Password)
+  // ==========================================
+  const handleGoogleLogin = async () => {
     setIsLoggingIn(true);
-    setAdminAuthError('');
-    setPendingAdminOpen(true);
+    setLoginError('');
 
     const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({
-      prompt: 'select_account',
-      login_hint: ADMIN_EMAIL
-    });
+    provider.setCustomParameters({ prompt: 'select_account' });
 
     try {
-      const result = await signInWithPopup(auth, provider);
-      const signedInEmail = result.user?.email?.toLowerCase();
-      if (signedInEmail === ADMIN_EMAIL) {
-        setShowAdminLoginModal(false);
-        setAdminAuthError('');
-        setPendingAdminOpen(false);
-        setActiveTab('admin');
-      } else {
-        setPendingAdminOpen(false);
-        setAdminAuthError(
-          `ログインされたアカウント（${result.user?.email || '不明'}）には管理者権限がありません。必ず「${ADMIN_EMAIL}」を選択してログインしてください。`
-        );
-      }
+      await signInWithPopup(auth, provider);
     } catch (err) {
       console.error("Google Sign-In error:", err);
       if (err.code === 'auth/popup-blocked') {
@@ -983,64 +1228,101 @@ export default function App() {
           console.error("Redirect Sign-In error:", redirectErr);
         }
       }
-      setPendingAdminOpen(false);
       if (err.code === 'auth/unauthorized-domain') {
-        setAdminAuthError(
+        setLoginError(
           "現在のWebドメインがFirebaseで未承認です。Firebase Console の Authentication → 設定 → 承認済みドメイン に現在のURLを追加してください。"
         );
       } else if (err.code === 'auth/popup-closed-by-user') {
-        setAdminAuthError("ログイン画面が閉じられました。もう一度ボタンを押してログインしてください。");
+        setLoginError("ログイン画面が閉じられました。もう一度ボタンを押してログインしてください。");
       } else {
-        setAdminAuthError(`Googleログインに失敗しました（${err.code || 'エラー'}）。再度お試しください。`);
+        setLoginError(`Googleログインに失敗しました（${err.code || 'エラー'}）。`);
       }
     } finally {
       setIsLoggingIn(false);
     }
   };
 
-  // Set Student Profile Name (for children on shared devices)
-  const handleSetLocalProfileName = () => {
-    const name = prompt("テストを受けるお子様のお名前を入力してください（例: お兄ちゃん、弟）:", studentName);
-    if (name && name.trim()) {
-      const trimmed = name.trim();
-      setStudentName(trimmed);
-      try {
-        localStorage.setItem('learn_daily_student_name', trimmed);
-      } catch (e) {
-        console.warn("Could not save student name:", e);
+  const handleEmailAuthSubmit = async (e) => {
+    e.preventDefault();
+    if (!emailInput.trim() || !passwordInput.trim()) {
+      setLoginError("メールアドレスとパスワードを入力してください。");
+      return;
+    }
+
+    setIsLoggingIn(true);
+    setLoginError('');
+
+    try {
+      if (authMode === 'register') {
+        if (!childNameInput.trim()) {
+          setLoginError("お子様のお名前（表示名）を入力してください。");
+          setIsLoggingIn(false);
+          return;
+        }
+        const cred = await createUserWithEmailAndPassword(auth, emailInput.trim(), passwordInput);
+        await updateProfile(cred.user, { displayName: childNameInput.trim() });
+        setUser({ ...cred.user, displayName: childNameInput.trim() });
+      } else {
+        await signInWithEmailAndPassword(auth, emailInput.trim(), passwordInput);
       }
-      setAuthError(null);
+    } catch (err) {
+      console.error("Email auth error:", err);
+      if (err.code === 'auth/operation-not-allowed') {
+        setLoginError("Firebase側でメール/パスワード認証がまだ有効化されていません。「Googleアカウントでログイン」をご利用ください。");
+      } else if (err.code === 'auth/email-already-in-use') {
+        setLoginError("このメールアドレスは既に登録されています。「ログイン」タブからログインしてください。");
+      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+        setLoginError("メールアドレスまたはパスワードが正しくありません。");
+      } else if (err.code === 'auth/weak-password') {
+        setLoginError("パスワードは6文字以上で設定してください。");
+      } else {
+        setLoginError(`認証エラーが発生しました（${err.code}）。`);
+      }
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
-  // Admin Sign Out Handler
-  const handleAdminLogout = async () => {
+  const openEditNameModal = () => {
+    setEditNameDraft(currentUserDisplayName);
+    setIsEditingName(true);
+  };
+
+  const handleSaveDisplayName = async (e) => {
+    e.preventDefault();
+    if (!user || !editNameDraft.trim()) return;
+    try {
+      await updateProfile(user, { displayName: editNameDraft.trim() });
+      setUser({ ...user, displayName: editNameDraft.trim() });
+    } catch (err) {
+      console.error("Failed to update profile name:", err);
+    } finally {
+      setIsEditingName(false);
+    }
+  };
+
+  const handleLogout = async () => {
     try {
       await signOut(auth);
-      await signInAnonymously(auth);
+      setActiveTab('home');
     } catch (err) {
       console.error("Signout error:", err);
     }
-    setActiveTab('home');
   };
 
-  // Handle clicking "保護者管理" button in Header
-  const handleAdminButtonClick = () => {
-    if (isParentAdmin) {
-      setActiveTab('admin');
-    } else {
-      if (user && !user.isAnonymous && user.email) {
-        setAdminAuthError(
-          `現在ログイン中のアカウント（${user.email}）では表示できません。管理者アカウント（${ADMIN_EMAIL}）でログインしてください。`
-        );
-      } else {
-        setAdminAuthError('');
-      }
-      setShowAdminLoginModal(true);
+  const handleSaveGeminiApiKey = () => {
+    try {
+      localStorage.setItem('learndaily_gemini_api_key', geminiApiKeyInput.trim());
+      setApiKeySavedToast(true);
+      setTimeout(() => setApiKeySavedToast(false), 3000);
+    } catch (e) {
+      console.warn("Could not save API key:", e);
     }
   };
 
-  // Initialize timer duration based on question count
+  // ==========================================
+  // Quiz Start & Execution Handlers
+  // ==========================================
   const initializeQuizSession = (questions, subjectKey) => {
     setSelectedSubject(subjectKey);
     setCurrentQuestions(questions);
@@ -1051,37 +1333,58 @@ export default function App() {
     setElapsedSec(0);
     setTimeLeftSec(questions.length * 90);
     setWasAutoSubmittedByTimeout(false);
+    setTimedOutTrigger(false);
     setActiveTab('quiz');
   };
 
   const startQuiz = (subject) => {
-    let questions = [];
+    if (!user) return;
+    const nextAttempt = sessionAttemptCount + 1;
+    setSessionAttemptCount(nextAttempt);
 
+    const today = new Date();
+    const seedBase = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate() + nextAttempt * 41;
+
+    let questions = [];
     if (selectedGrade === 'grade2') {
-      if (subject === 'math') questions = shuffleArray(MATH_QUESTIONS_G2);
-      else if (subject === 'japanese') questions = shuffleArray(JAPANESE_QUESTIONS_G2);
-      else if (subject === 'uyghur') questions = shuffleArray(UYGHUR_QUESTIONS);
-      else questions = generateDailyDynamicQuestions('grade2');
+      if (subject === 'math') {
+        questions = generateDynamicMathG2(seedBase);
+      } else if (subject === 'japanese') {
+        questions = shuffleArray(JAPANESE_QUESTIONS_G2_POOL).slice(0, 10).map(randomizeQuestionOptions);
+      } else if (subject === 'uyghur') {
+        questions = shuffleArray(UYGHUR_QUESTIONS_POOL).slice(0, 10).map(randomizeQuestionOptions);
+      } else {
+        questions = generateDailyDynamicQuestions('grade2', nextAttempt);
+      }
     } else {
-      if (subject === 'math') questions = shuffleArray(MATH_QUESTIONS_G5);
-      else if (subject === 'japanese') questions = shuffleArray(JAPANESE_QUESTIONS_G5);
-      else if (subject === 'uyghur') questions = shuffleArray(UYGHUR_QUESTIONS);
-      else questions = generateDailyDynamicQuestions('grade5');
+      if (subject === 'math') {
+        questions = generateDynamicMathG5(seedBase);
+      } else if (subject === 'japanese') {
+        questions = shuffleArray(JAPANESE_QUESTIONS_G5_POOL).slice(0, 10).map(randomizeQuestionOptions);
+      } else if (subject === 'uyghur') {
+        questions = shuffleArray(UYGHUR_QUESTIONS_POOL).slice(0, 10).map(randomizeQuestionOptions);
+      } else {
+        questions = generateDailyDynamicQuestions('grade5', nextAttempt);
+      }
     }
 
     initializeQuizSession(questions, subject);
   };
 
   const startDailyTest = async () => {
+    if (!user) return;
+    const nextAttempt = sessionAttemptCount + 1;
+    setSessionAttemptCount(nextAttempt);
+
     setIsGeneratingAI(true);
-    const questions = await fetchAIDailyQuestions('combined', selectedGrade);
+    const questions = await fetchAIDailyQuestions('combined', selectedGrade, nextAttempt);
     setIsGeneratingAI(false);
     initializeQuizSession(questions, 'daily');
   };
 
   const startWeaknessQuiz = () => {
-    if (wrongQuestionsPool.length === 0) return;
-    const selectedWeakQuestions = shuffleArray(wrongQuestionsPool).slice(0, 10);
+    if (!user || wrongQuestionsPool.length === 0) return;
+    const selectedWeakQuestions = shuffleArray(wrongQuestionsPool).slice(0, 10).map(randomizeQuestionOptions);
     initializeQuizSession(selectedWeakQuestions, 'weakness');
   };
 
@@ -1155,8 +1458,9 @@ export default function App() {
       wasTimeout: isTimeout,
       categoryStats: categoryStats,
       answeredBreakdown: answeredBreakdown,
-      userDisplayName: studentName,
-      userEmail: user?.email || 'ゲスト'
+      userUid: user?.uid || '',
+      userDisplayName: currentUserDisplayName,
+      userEmail: user?.email || ''
     };
 
     try {
@@ -1178,11 +1482,13 @@ export default function App() {
     setActiveTab('results');
   };
 
-  // Filtered dataset for History and Admin view
+  // ==========================================
+  // Analytics & Filtering Data
+  // ==========================================
   const filteredHistoryDocs = useMemo(() => {
-    let list = [...historyDocs];
+    let list = activeTab === 'admin' ? [...historyDocs] : [...myHistoryDocs];
 
-    if (adminSelectedChildName !== 'ALL') {
+    if (activeTab === 'admin' && adminSelectedChildName !== 'ALL') {
       list = list.filter(item => item.userDisplayName === adminSelectedChildName);
     }
 
@@ -1204,14 +1510,13 @@ export default function App() {
     }
 
     return list;
-  }, [historyDocs, adminSelectedChildName, historyPeriodFilter, customSearchDate]);
+  }, [activeTab, historyDocs, myHistoryDocs, adminSelectedChildName, historyPeriodFilter, customSearchDate]);
 
   const childNamesList = useMemo(() => {
     const names = new Set(historyDocs.map(d => d.userDisplayName).filter(Boolean));
     return Array.from(names);
   }, [historyDocs]);
 
-  // 30-Day Habit Calendar Data
   const calendar30Days = useMemo(() => {
     const days = [];
     const testedDates = new Set(filteredHistoryDocs.map(item => item.dateIso));
@@ -1229,7 +1534,6 @@ export default function App() {
     return days;
   }, [filteredHistoryDocs]);
 
-  // Radar Chart Data
   const radarData = useMemo(() => {
     const totals = {};
     filteredHistoryDocs.forEach(doc => {
@@ -1250,7 +1554,6 @@ export default function App() {
     }));
   }, [filteredHistoryDocs]);
 
-  // Score Trend Data
   const scoreTrendData = useMemo(() => {
     return [...filteredHistoryDocs]
       .reverse()
@@ -1274,14 +1577,221 @@ export default function App() {
 
   const currentRank = getRankBadge(averageScore);
 
+  // ==========================================
+  // RENDER 1: AUTH LOADING SPINNER
+  // ==========================================
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
+        <div className="w-12 h-12 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black text-xl mb-4 animate-bounce">
+          四
+        </div>
+        <p className="text-sm font-bold text-slate-300">認証状態を確認しています...</p>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // RENDER 2: MANDATORY LOGIN GATE (NO GUEST MODE)
+  // ==========================================
+  if (!user || user.isAnonymous) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6">
+          
+          {/* Brand Header */}
+          <div className="text-center space-y-2">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-400 to-amber-200 text-slate-950 flex items-center justify-center font-black text-2xl mx-auto shadow-md">
+              四
+            </div>
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900">
+              四谷大塚 入塾テスト対策
+            </h1>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              学習履歴の正確な記録と管理のため、<strong className="text-slate-800">ログインが必須</strong>です。<br />
+              お子様または保護者様のアカウントでログインしてください。
+            </p>
+          </div>
+
+          {loginError && (
+            <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3.5 rounded-xl font-bold leading-relaxed flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          {/* Primary Google Sign-In Button */}
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={isLoggingIn}
+            className="w-full py-3.5 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-sm shadow-lg transition flex items-center justify-center gap-2.5 disabled:opacity-60"
+          >
+            <LogIn className="w-4 h-4 text-amber-400" />
+            <span>{isLoggingIn ? 'ログイン処理中...' : 'Googleアカウントでログイン'}</span>
+          </button>
+
+          <div className="relative flex items-center justify-center">
+            <div className="border-t border-slate-200 w-full"></div>
+            <span className="bg-white px-3 text-[11px] font-bold text-slate-400 whitespace-nowrap">
+              または メールアドレスでログイン
+            </span>
+            <div className="border-t border-slate-200 w-full"></div>
+          </div>
+
+          {/* Email & Password Login / Register Form */}
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => { setAuthMode('login'); setLoginError(''); }}
+                className={`py-1.5 rounded-lg text-xs font-extrabold transition ${
+                  authMode === 'login' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
+                }`}
+              >
+                ログイン
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAuthMode('register'); setLoginError(''); }}
+                className={`py-1.5 rounded-lg text-xs font-extrabold transition ${
+                  authMode === 'register' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
+                }`}
+              >
+                新規アカウント作成
+              </button>
+            </div>
+
+            <form onSubmit={handleEmailAuthSubmit} className="space-y-3">
+              {authMode === 'register' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    お子様のお名前（表示名）
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      value={childNameInput}
+                      onChange={(e) => setChildNameInput(e.target.value)}
+                      placeholder="例: お兄ちゃん / 弟"
+                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:border-indigo-600 outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  メールアドレス
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="email"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    placeholder="example@gmail.com"
+                    required
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:border-indigo-600 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  パスワード（6文字以上）
+                </label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="password"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    placeholder="••••••"
+                    required
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-xs font-bold focus:border-indigo-600 outline-none"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs shadow transition flex items-center justify-center gap-1.5 disabled:opacity-60"
+              >
+                {authMode === 'register' ? (
+                  <>
+                    <UserPlus className="w-4 h-4" />
+                    <span>アカウントを作成してテストを始める</span>
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="w-4 h-4" />
+                    <span>ログインしてテストを始める</span>
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+
+          <p className="text-[11px] text-center text-slate-400">
+            ※ ゲスト利用は停止されています。管理者（{ADMIN_EMAIL}）でログインすると保護者管理画面が表示されます。
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // RENDER 3: AUTHENTICATED MAIN APPLICATION
+  // ==========================================
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col">
       
+      {/* Inline Display Name Modal */}
+      {isEditingName && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <form
+            onSubmit={handleSaveDisplayName}
+            className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 space-y-4"
+          >
+            <h3 className="font-black text-base text-slate-900">表示名を変更</h3>
+            <p className="text-xs text-slate-500">
+              成績一覧や保護者画面に表示されるお名前を入力してください。
+            </p>
+            <input
+              type="text"
+              value={editNameDraft}
+              onChange={(e) => setEditNameDraft(e.target.value)}
+              placeholder="例: お兄ちゃん、弟"
+              autoFocus
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-bold focus:border-indigo-600 outline-none"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsEditingName(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200"
+              >
+                キャンセル
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl text-xs font-extrabold bg-indigo-600 text-white hover:bg-indigo-700"
+              >
+                保存する
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Top Header Navigation */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-50">
+      <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2.5 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
           
-          {/* Top Row: Compact Title & Mobile Student Name */}
+          {/* Top Row: Compact Title & Mobile Logged-in User Info */}
           <div className="flex items-center justify-between gap-2">
             <div 
               onClick={() => setActiveTab('home')}
@@ -1295,27 +1805,34 @@ export default function App() {
                   四谷大塚 入塾テスト対策
                 </h1>
                 <p className="hidden lg:block text-[10px] text-amber-300 font-medium whitespace-nowrap">
-                  直前ラストスパート・タイマー＆弱点克服対応
+                  毎日日替わり自動出題・タイマー＆弱点克服対応
                 </p>
               </div>
             </div>
 
-            {/* Mobile Student Name Button */}
+            {/* Mobile User Name & Logout */}
             <div className="flex items-center gap-1.5 md:hidden shrink-0">
               <button
-                onClick={handleSetLocalProfileName}
-                title="受検するお子様の名前を変更"
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold px-2.5 py-1.5 rounded-lg text-xs transition flex items-center gap-1 max-w-[125px]"
+                onClick={openEditNameModal}
+                title="表示名を変更"
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold px-2.5 py-1.5 rounded-lg text-xs transition flex items-center gap-1 max-w-[120px]"
               >
-                <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span className="truncate">{studentName}</span>
+                <User className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="truncate">{currentUserDisplayName}</span>
+              </button>
+              <button
+                onClick={handleLogout}
+                title="ログアウト"
+                className="p-1.5 bg-slate-800 text-slate-300 hover:text-white rounded-lg border border-slate-700"
+              >
+                <LogOut className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
 
           {/* Navigation Tabs & Desktop Profile */}
           <div className="flex items-center justify-between md:justify-end gap-1.5 sm:gap-2 pt-2 md:pt-0 border-t border-slate-800 md:border-t-0">
-            <nav className="grid grid-cols-3 md:flex items-center gap-1.5 w-full md:w-auto">
+            <nav className={`grid ${isParentAdmin ? 'grid-cols-3' : 'grid-cols-2'} md:flex items-center gap-1.5 w-full md:w-auto`}>
               <button
                 onClick={() => setActiveTab('home')}
                 className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 whitespace-nowrap ${
@@ -1336,121 +1853,51 @@ export default function App() {
                 <span>成績・分析</span>
               </button>
 
-              {/* Parent Admin Access Button (Restricted to peruqsidiq@gmail.com) */}
-              <button
-                onClick={handleAdminButtonClick}
-                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-extrabold transition flex items-center justify-center gap-1 border whitespace-nowrap ${
-                  activeTab === 'admin'
-                    ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-sm'
-                    : isParentAdmin
-                    ? 'bg-emerald-900/60 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900'
-                    : 'bg-slate-800 text-amber-300 border-amber-400/40 hover:bg-slate-700'
-                }`}
-              >
-                {isParentAdmin ? (
-                  <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-                ) : (
-                  <Lock className="w-3.5 h-3.5 shrink-0" />
-                )}
-                <span>保護者管理</span>
-              </button>
-            </nav>
-
-            {/* Desktop Student Name & Admin Status */}
-            <div className="hidden md:flex items-center gap-2 pl-2 border-l border-slate-800 shrink-0">
-              <button
-                onClick={handleSetLocalProfileName}
-                title="受検するお子様の名前を変更"
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold px-2.5 py-1.5 rounded-lg text-xs transition flex items-center gap-1 whitespace-nowrap"
-              >
-                <User className="w-3.5 h-3.5 text-amber-400" />
-                <span>{studentName}</span>
-              </button>
-
+              {/* Parent Admin Button: ONLY rendered when logged in as peruqsidiq@gmail.com */}
               {isParentAdmin && (
                 <button
-                  onClick={handleAdminLogout}
-                  title={`管理者ログアウト (${user?.email})`}
-                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                  onClick={() => setActiveTab('admin')}
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-extrabold transition flex items-center justify-center gap-1 border whitespace-nowrap ${
+                    activeTab === 'admin'
+                      ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-sm'
+                      : 'bg-emerald-900/60 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900'
+                  }`}
                 >
-                  <LogOut className="w-4 h-4" />
+                  <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                  <span>保護者管理</span>
                 </button>
               )}
+            </nav>
+
+            {/* Desktop User Name & Logout */}
+            <div className="hidden md:flex items-center gap-2 pl-2 border-l border-slate-800 shrink-0">
+              <button
+                onClick={openEditNameModal}
+                title="表示名を変更"
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold px-2.5 py-1.5 rounded-lg text-xs transition flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <User className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{currentUserDisplayName}</span>
+                <Edit3 className="w-3 h-3 text-slate-400" />
+              </button>
+
+              <button
+                onClick={handleLogout}
+                title={`ログアウト (${user?.email})`}
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
         </div>
       </header>
 
-      {/* Auth Error Toast */}
-      {authError && (
-        <div className="bg-rose-100 border border-rose-300 text-rose-800 text-xs p-3 text-center flex items-center justify-center gap-2">
-          <AlertCircle className="w-4 h-4 text-rose-600" />
-          <span>{authError}</span>
-          <button onClick={() => setAuthError(null)} className="ml-2 font-bold text-slate-500">✕</button>
-        </div>
-      )}
-
-      {/* Parent Admin Google Account Verification Modal */}
-      {showAdminLoginModal && (
-        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200">
-            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mb-4 font-black">
-              <ShieldCheck className="w-7 h-7" />
-            </div>
-            <h3 className="text-xl font-black text-slate-900 mb-1">保護者専用管理画面（管理者認証）</h3>
-            <p className="text-xs text-slate-600 leading-relaxed mb-4">
-              この画面は管理者アカウント（<strong className="text-slate-900">{ADMIN_EMAIL}</strong>）でGoogleログインしている場合のみ表示されます。
-            </p>
-
-            {user && !user.isAnonymous && user.email && (
-              <div className="mb-4 p-3 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-700">
-                現在のログイン状態: <strong className="text-slate-900">{user.email}</strong>
-              </div>
-            )}
-
-            {adminAuthError && (
-              <div className="mb-4 text-xs text-rose-700 font-bold bg-rose-50 p-3 rounded-xl border border-rose-200 leading-relaxed">
-                {adminAuthError}
-              </div>
-            )}
-
-            <div className="space-y-3 pt-1">
-              <button
-                type="button"
-                onClick={handleAdminGoogleSignIn}
-                disabled={isLoggingIn}
-                className="w-full py-3 rounded-xl font-extrabold text-xs sm:text-sm bg-slate-900 hover:bg-slate-800 text-white shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-60"
-              >
-                <LogIn className="w-4 h-4 text-amber-400" />
-                <span>
-                  {isLoggingIn
-                    ? 'Google認証中...'
-                    : user && !user.isAnonymous
-                    ? '別のGoogleアカウントでログインし直す'
-                    : 'Googleでログインして管理画面を開く'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAdminLoginModal(false);
-                  setAdminAuthError('');
-                }}
-                className="w-full py-2.5 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 transition"
-              >
-                閉じる
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ================= MAIN CONTENT AREA ================= */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6">
         
-        {/* TAB 1: HOME (GRADE SELECTOR, TIMER SETTING, WEAKNESS MODE & TEST SELECTION) */}
+        {/* TAB 1: HOME */}
         {activeTab === 'home' && (
           <div className="space-y-6">
             
@@ -1518,15 +1965,15 @@ export default function App() {
                 <div className="max-w-xl space-y-3">
                   <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-md px-3.5 py-1 rounded-full text-xs font-bold text-amber-100 border border-white/30">
                     <Calendar className="w-4 h-4 text-amber-200" />
-                    【{selectedGrade === 'grade2' ? '小学2年生用' : '小学5年生用'}】本日の20問模試
+                    【{selectedGrade === 'grade2' ? '小学2年生用' : '小学5年生用'}】本日の20問模試（毎回数値・問題自動生成）
                   </div>
 
                   <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
-                    毎日1回の習慣で差がつく！<br />算数10問・国語10問の本日限定模試
+                    毎日1回の習慣で差がつく！<br />算数10問・国語10問の日替わり模試
                   </h2>
 
                   <p className="text-amber-100 text-xs sm:text-sm leading-relaxed">
-                    AIが日付に合わせた日替わり問題（算数10問・国語10問）を自動生成します。本番さながらのタイマー意識で実力を出し切りましょう！
+                    {currentUserDisplayName} さん専用の日替わり問題（算数10問・国語10問）を毎回新しい数値・組み合わせで自動生成します。本番さながらのタイマー意識で実力を出し切りましょう！
                   </p>
 
                   <div className="flex items-center gap-4 pt-2 flex-wrap">
@@ -1559,12 +2006,12 @@ export default function App() {
                     {isGeneratingAI ? (
                       <>
                         <RefreshCw className="w-5 h-5 text-amber-600 animate-spin" />
-                        <span>AIが本日限定20問を生成中...</span>
+                        <span>新しい20問を作成中...</span>
                       </>
                     ) : (
                       <>
                         <Zap className="w-5 h-5 text-amber-500 fill-amber-500" />
-                        <span>{streakInfo.testedToday ? 'もう一度本日の20問テストを解く' : '本日の20問テストを開始'}</span>
+                        <span>{streakInfo.testedToday ? '新しい問題でもう一度20問解く' : '本日の20問テストを開始'}</span>
                         <ChevronRight className="w-5 h-5 text-slate-400" />
                       </>
                     )}
@@ -1645,8 +2092,8 @@ export default function App() {
                     </h4>
                     <p className="text-slate-500 text-xs leading-relaxed mb-4">
                       {selectedGrade === 'grade2'
-                        ? 'たし算ひき算の工夫、九九・かけ算、長さ・時間の計算、図形の基礎問題など10問をテストします。'
-                        : '計算の工夫、逆算、植木算、和差算、つるかめ算、過不足算、周期算、図形など10問をテストします。'}
+                        ? 'たし算ひき算の工夫、九九・かけ算、長さ・時間・水のかさ、図形など毎回新しい数値で10問出題します。'
+                        : '計算の工夫、逆算、植木算、和差算、つるかめ算、過不足算、周期算、図形など毎回新しい数値で10問出題します。'}
                     </p>
                   </div>
                   <button
@@ -1674,8 +2121,8 @@ export default function App() {
                     </h4>
                     <p className="text-slate-500 text-xs leading-relaxed mb-4">
                       {selectedGrade === 'grade2'
-                        ? '2年生の漢字、反対の言葉、言葉のつなぎ方、ていねいな言葉、短い文の気持ちの理解など10問です。'
-                        : '漢字、部首、対義語、ことわざ・四字熟語、主語述語、接続詞、指示語、登場人物の心情理解など10問です。'}
+                        ? '2年生の漢字、反対の言葉、ものの数え方、言葉のつなぎ方、気持ちの理解などから毎回ランダムに10問出題します。'
+                        : '漢字、部首、対義語、類義語、四字熟語、接続詞、指示語、心情理解・要旨把握などから毎回10問出題します。'}
                     </p>
                   </div>
                   <button
@@ -1702,7 +2149,7 @@ export default function App() {
                       ウイグル語 (ئۇيغۇرچە) テスト
                     </h4>
                     <p className="text-slate-500 text-xs leading-relaxed mb-4">
-                      ウイグル文字（アラビア文字表記）、日常単語（くだもの・家族・数・動物）、挨拶、文法、自己紹介など基礎10問です。
+                      ウイグル文字（アラビア文字表記）、日常単語（くだもの・家族・数・水・動物）、挨拶、自己紹介など10問出題します。
                     </p>
                   </div>
                   <button
@@ -1732,7 +2179,7 @@ export default function App() {
                       算国 20問 総合実戦模試
                     </h4>
                     <p className="text-slate-300 text-xs leading-relaxed mb-4">
-                      算数10問と国語10問（合計20問）のフルセット模試。入塾基準をバランスよくチェックします。
+                      算数10問と国語10問（合計20問）のフルセット模試。毎回新しい数値と出題セットで実力を測ります。
                     </p>
                   </div>
                   <button
@@ -1750,7 +2197,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: QUIZ RUNNER WITH EXAM TIMER */}
+        {/* TAB 2: QUIZ RUNNER */}
         {activeTab === 'quiz' && currentQuestions.length > 0 && (
           <div className="max-w-2xl mx-auto space-y-6">
             
@@ -1852,7 +2299,6 @@ export default function App() {
         {activeTab === 'results' && selectedHistoryItem && (
           <div className="max-w-3xl mx-auto space-y-6">
             
-            {/* Timeout Notice Banner if Auto-Submitted */}
             {(wasAutoSubmittedByTimeout || selectedHistoryItem.wasTimeout) && (
               <div className="bg-amber-100 border-2 border-amber-400 text-amber-950 p-4 rounded-2xl text-xs font-bold flex items-center gap-3 shadow-sm">
                 <Timer className="w-6 h-6 text-amber-600 flex-shrink-0" />
@@ -1862,7 +2308,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Score Overview Header */}
             <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-md text-center relative overflow-hidden">
               <div className="inline-block bg-indigo-50 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full mb-2">
                 {getSubjectLabel(selectedHistoryItem.subject)} ({selectedHistoryItem.gradeLabel || '標準'} - {selectedHistoryItem.dateStr})
@@ -1898,7 +2343,6 @@ export default function App() {
                 )}
               </div>
 
-              {/* Target Class Evaluation */}
               <div className="max-w-sm mx-auto bg-slate-50 rounded-xl p-3 border border-slate-200 mt-4">
                 <div className="text-xs text-slate-500">四谷大塚 クラス判定目安</div>
                 <div className="font-extrabold text-sm text-indigo-900 mt-0.5">
@@ -1906,7 +2350,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Action Buttons */}
               <div className="flex items-center justify-center gap-3 mt-6 flex-wrap">
                 <button
                   onClick={() => setActiveTab('home')}
@@ -1932,7 +2375,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Answer Breakdown & Explanations */}
             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
               <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 border-b border-slate-100 pb-3">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600" />
@@ -1995,7 +2437,6 @@ export default function App() {
         {activeTab === 'history' && (
           <div className="space-y-6">
             
-            {/* Overview Header */}
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div>
                 <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
@@ -2003,7 +2444,7 @@ export default function App() {
                   学習実績・成績ダッシュボード
                 </h2>
                 <p className="text-xs text-slate-500">
-                  {studentName} さんのテスト履歴と全期間・月別の分析結果です。
+                  {currentUserDisplayName} さんのテスト履歴と全期間・月別の分析結果です。
                 </p>
               </div>
 
@@ -2012,7 +2453,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* PERIOD FILTER BAR */}
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-2">
                 <Filter className="w-4 h-4 text-indigo-600" />
@@ -2067,17 +2507,14 @@ export default function App() {
               </div>
             </div>
 
-            {/* Visual Analytics Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              
-              {/* Radar Chart */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center">
                 <h3 className="font-bold text-slate-800 text-sm mb-2 w-full text-left flex items-center gap-2">
                   <BrainCircuit className="w-4 h-4 text-indigo-600" />
                   指定期間の分野別理解度（レーダー）
                 </h3>
-                <div className="w-full h-64">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="w-full">
+                  <ResponsiveContainer width="100%" height={256}>
                     <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
                       <PolarGrid stroke="#e2e8f0" />
                       <PolarAngleAxis dataKey="subject" tick={{ fill: '#475569', fontSize: 11 }} />
@@ -2088,15 +2525,14 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Line Chart */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center">
                 <h3 className="font-bold text-slate-800 text-sm mb-2 w-full text-left flex items-center gap-2">
                   <Trophy className="w-4 h-4 text-amber-500" />
                   得点率の推移（成長グラフ）
                 </h3>
-                <div className="w-full h-64">
+                <div className="w-full">
                   {scoreTrendData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height={256}>
                       <LineChart data={scoreTrendData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                         <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} />
@@ -2106,16 +2542,14 @@ export default function App() {
                       </LineChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                    <div className="h-64 flex items-center justify-center text-xs text-slate-400">
                       該当する期間のテスト履歴がありません。
                     </div>
                   )}
                 </div>
               </div>
-
             </div>
 
-            {/* History List */}
             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
               <h3 className="font-bold text-slate-900 text-sm mb-4 flex items-center gap-2">
                 <History className="w-4 h-4 text-indigo-600" />
@@ -2173,7 +2607,6 @@ export default function App() {
         {activeTab === 'admin' && isParentAdmin && (
           <div className="space-y-6">
             
-            {/* Parent Admin Header Badge */}
             <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex items-center justify-between flex-wrap gap-4 border border-slate-800">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black">
@@ -2188,12 +2621,41 @@ export default function App() {
               </div>
 
               <button
-                onClick={handleAdminLogout}
+                onClick={handleLogout}
                 className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-4 py-2 rounded-xl text-xs transition border border-slate-700 flex items-center gap-1.5"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>管理者ログアウト</span>
+                <span>ログアウト</span>
               </button>
+            </div>
+
+            {/* Optional Gemini API Key Setting */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  <span>Gemini AI 問題生成キー設定（任意）</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  未設定でも内蔵の「毎日自動問題生成エンジン」で毎回異なる問題が出題されます。APIキーを設定するとAIによる完全オリジナル問題も生成できます。
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="password"
+                  value={geminiApiKeyInput}
+                  onChange={(e) => setGeminiApiKeyInput(e.target.value)}
+                  placeholder="AIzaSy..."
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-mono outline-none focus:border-indigo-600 w-44"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveGeminiApiKey}
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition whitespace-nowrap"
+                >
+                  {apiKeySavedToast ? '保存済み ✓' : '保存'}
+                </button>
+              </div>
             </div>
 
             {/* CHILD SELECTOR & HISTORICAL PERIOD FILTER */}
@@ -2230,7 +2692,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Historical Period Controls */}
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-2">
                   <CalendarDays className="w-4 h-4 text-indigo-600" />
@@ -2310,15 +2771,13 @@ export default function App() {
 
             {/* VISUAL ANALYTICS */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              
-              {/* Radar Chart */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center">
                 <h3 className="font-bold text-slate-800 text-sm mb-2 w-full text-left flex items-center gap-2">
                   <BrainCircuit className="w-4 h-4 text-indigo-600" />
                   選択したお子様・期間の分野別理解度
                 </h3>
-                <div className="w-full h-64">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="w-full">
+                  <ResponsiveContainer width="100%" height={256}>
                     <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
                       <PolarGrid stroke="#e2e8f0" />
                       <PolarAngleAxis dataKey="subject" tick={{ fill: '#475569', fontSize: 11 }} />
@@ -2329,15 +2788,14 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Line Chart */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center">
                 <h3 className="font-bold text-slate-800 text-sm mb-2 w-full text-left flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-amber-500" />
                   得点成長グラフ
                 </h3>
-                <div className="w-full h-64">
+                <div className="w-full">
                   {scoreTrendData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height={256}>
                       <LineChart data={scoreTrendData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                         <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} />
@@ -2347,13 +2805,12 @@ export default function App() {
                       </LineChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                    <div className="h-64 flex items-center justify-center text-xs text-slate-400">
                       条件に一致するテストデータがありません。
                     </div>
                   )}
                 </div>
               </div>
-
             </div>
 
             {/* DETAILED TEST HISTORY LIST */}
@@ -2409,7 +2866,7 @@ export default function App() {
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 text-xs py-6 border-t border-slate-800 text-center">
         <div className="max-w-6xl mx-auto px-4">
-          四谷大塚 入塾テスト実戦対策・学習実績保存システム (ご家族運用・タイマー＆弱点克服対応)
+          四谷大塚 入塾テスト実戦対策・学習実績保存システム (会員ログイン専用・日替わり自動生成対応)
         </div>
       </footer>
     </div>
