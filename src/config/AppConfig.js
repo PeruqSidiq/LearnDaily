@@ -34,6 +34,7 @@ export class AppConfig {
   static SUBJECT_LABELS = {
     math: '算数思考トレーニング',
     japanese: '国語ことばトレーニング',
+    english: '英語入門トレーニング',
     uyghur: 'ウイグル語トレーニング',
     daily: '本日の思考力チャレンジ',
     weakness: '🔥 弱点克服トレーニング',
@@ -42,6 +43,6 @@ export class AppConfig {
 
   static RADAR_CATEGORIES = [
     '算数計算', '特殊算', '図形', '思考力',
-    '国語漢字', '語彙文法', '読解力', 'ウイグル語'
+    '国語漢字', '語彙文法', '読解力', '英語', 'ウイグル語'
   ];
 }
