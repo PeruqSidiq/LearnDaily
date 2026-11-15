@@ -28,7 +28,7 @@ export function LoginGateView({ onGoogleLogin, onEmailSubmit, isLoggingIn, login
             四
           </div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-900">
-            四谷大塚 入塾テスト対策
+            入塾テスト対策
           </h1>
           <p className="text-xs text-slate-500 leading-relaxed">
             学習履歴の正確な記録と管理のため、<strong className="text-slate-800">ログインが必須</strong>です。<br />
