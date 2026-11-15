@@ -1,5 +1,5 @@
 // src/components/PageViews.jsx
-// 全5画面ビュー（ホーム・テスト実行・結果・学習履歴・保護者管理）音声読み上げ対応版
+// 全5画面ビュー（ホーム・テスト実行・結果・学習履歴・保護者管理）音声読み上げ＆リスニング完全対応版
 
 import React, { useState, useMemo, useEffect } from 'react';
 import {
@@ -25,31 +25,38 @@ import {
   Target,
   Check,
   Globe,
-  Volume2
+  Volume2,
+  Headphones
 } from 'lucide-react';
 import { AppConfig } from '../config/AppConfig';
 import { QuizUtils } from '../utils/QuizUtils';
 
 // =========================================================================
-// 共通ヘルパー（音声読み上げ・科目メタデータ・ランク判定）
+// 共通ヘルパー（音声読み上げ・英語判定・科目メタデータ・ステージ判定）
 // =========================================================================
-const speakEnglishText = (text) => {
+const speakEnglishText = (text, rate = 0.85) => {
   if (!text || typeof window === 'undefined' || !('speechSynthesis' in window)) {
     return;
   }
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(String(text));
   utterance.lang = 'en-US';
-  utterance.rate = 0.85; // 子どもが聞き取りやすい少しゆっくりめの速度
+  utterance.rate = rate;
   utterance.pitch = 1.0;
   window.speechSynthesis.speak(utterance);
 };
 
-// 問題文から英語部分（アルファベットを含むフレーズ）を抽出するヘルパー
+// 問題文から英語部分（アルファベットを含むフレーズ）を抽出
 const extractEnglishPhrase = (questionText) => {
   if (!questionText) return '';
   const matches = String(questionText).match(/[A-Za-z][A-Za-z0-9\s.,!?'"-]*[A-Za-z0-9.!?]/g);
   return matches ? matches.join(' ') : '';
+};
+
+// 選択肢が英語（アルファベット主体）かどうかを判定
+const isEnglishPhrase = (text) => {
+  if (!text) return false;
+  return /^[A-Za-z0-9\s.,!?'"()-]+$/.test(String(text).trim());
 };
 
 const SUBJECT_META = {
@@ -68,12 +75,19 @@ const SUBJECT_META = {
     badgeClass: 'bg-emerald-100 text-emerald-700',
     buttonClass: 'bg-emerald-600 hover:bg-emerald-700'
   },
+  english_listening: {
+    label: AppConfig?.SUBJECT_LABELS?.english_listening || '英語リスニング集中',
+    badgeClass: 'bg-teal-100 text-teal-700',
+    buttonClass: 'bg-teal-600 hover:bg-teal-700'
+  },
   mixed: {
     label: AppConfig?.SUBJECT_LABELS?.mixed || '総合思考力チャレンジ',
     badgeClass: 'bg-purple-100 text-purple-700',
     buttonClass: 'bg-purple-600 hover:bg-purple-700'
   }
 };
+
+const isEnglishSubject = (subj) => subj === 'english' || subj === 'english_listening';
 
 const formatSeconds = (sec) => {
   if (QuizUtils && typeof QuizUtils.formatTime === 'function') {
@@ -359,7 +373,7 @@ export function HomeView({
             </button>
           </div>
 
-          {/* 3. 英語（English）入門カード（全学年共通・音声読み上げ対応） */}
+          {/* 3. 英語（English）入門カード（全学年共通・音声＆リスニング対応） */}
           <div className="bg-white rounded-2xl p-5 border-2 border-emerald-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -373,18 +387,31 @@ export function HomeView({
                 英語（English）入門トレーニング
               </h3>
               <p className="text-sm text-slate-600 mb-4">
-                ネイティブ発音を聞きながら、あいさつ・数字・色・動物・日常フレーズを楽しく学びます。
+                ネイティブ発音を聞きながら、英単語・日常フレーズ・リスニングをゼロから楽しく学びます。
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => triggerStart('english')}
-              disabled={isLoadingQuiz || startingSubject !== null}
-              className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
-            >
-              <Play className="w-4 h-4" />
-              {startingSubject === 'english' ? '英語問題を準備中...' : '英語テストを開始する'}
-            </button>
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => triggerStart('english')}
+                disabled={isLoadingQuiz || startingSubject !== null}
+                className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
+              >
+                <Play className="w-4 h-4" />
+                {startingSubject === 'english' ? '英語問題を準備中...' : '英語テストを開始する'}
+              </button>
+              <button
+                type="button"
+                onClick={() => triggerStart('english_listening')}
+                disabled={isLoadingQuiz || startingSubject !== null}
+                className="w-full py-2 px-4 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 disabled:opacity-50 text-emerald-800 font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
+              >
+                <Headphones className="w-3.5 h-3.5" />
+                {startingSubject === 'english_listening'
+                  ? 'リスニング問題を準備中...'
+                  : '発音を聞いて答えるリスニング10問に挑戦'}
+              </button>
+            </div>
           </div>
 
           {/* 4. 総合チャレンジカード */}
@@ -420,7 +447,7 @@ export function HomeView({
 }
 
 // =========================================================================
-// 2. テスト実行画面（QuizRunnerView - 音声読み上げ対応）
+// 2. テスト実行画面（QuizRunnerView - リスニング問題＆音声読み上げ完全対応）
 // =========================================================================
 export function QuizRunnerView({
   questions = [],
@@ -451,20 +478,35 @@ export function QuizRunnerView({
   const isAnswered = selectedChoice !== undefined && selectedChoice !== null;
   const isLastQuestion = activeIndex >= questions.length - 1;
 
+  const isEng = isEnglishSubject(subject);
   const meta = SUBJECT_META[subject] || SUBJECT_META.math;
+  const isListeningQuestion = Boolean(
+    currentQuestion && (currentQuestion.type === 'listening' || currentQuestion.audioText)
+  );
   const questionEnglishPart = useMemo(
-    () => extractEnglishPhrase(currentQuestion?.question),
+    () => currentQuestion?.audioText || extractEnglishPhrase(currentQuestion?.question),
     [currentQuestion]
   );
 
-  // 画面離脱や問題切り替え時に再生中の音声を停止
+  // リスニング問題が表示されたときに自動で1回発音＆問題切替時に音声を停止
   useEffect(() => {
+    if (isListeningQuestion && currentQuestion?.audioText) {
+      const timer = setTimeout(() => {
+        speakEnglishText(currentQuestion.audioText, 0.85);
+      }, 250);
+      return () => {
+        clearTimeout(timer);
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+      };
+    }
     return () => {
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
     };
-  }, [activeIndex]);
+  }, [activeIndex, isListeningQuestion, currentQuestion]);
 
   if (!questions || questions.length === 0 || !currentQuestion) {
     return (
@@ -499,9 +541,11 @@ export function QuizRunnerView({
     if (typeof onSelectAnswer === 'function') onSelectAnswer(activeIndex, choice);
     if (typeof handleSelectAnswer === 'function') handleSelectAnswer(activeIndex, choice);
 
-    // 英語テストでは選択した英単語を自動で1回発音して耳からも覚えられるようにする
-    if (subject === 'english') {
-      speakEnglishText(choice);
+    // 英語の選択肢を選んだ場合はその英語を発音、リスニング問題の場合は正解の英語を発音
+    if (isEng && isEnglishPhrase(choice)) {
+      speakEnglishText(choice, 0.85);
+    } else if (isListeningQuestion && currentQuestion.audioText) {
+      speakEnglishText(currentQuestion.audioText, 0.85);
     }
   };
 
@@ -547,7 +591,7 @@ export function QuizRunnerView({
               {meta.label}
             </span>
             <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
-              {subject === 'english' ? '全学年共通' : `小学${grade}年生`}
+              {isEng ? '全学年共通' : `小学${grade}年生`}
             </span>
           </div>
 
@@ -592,11 +636,11 @@ export function QuizRunnerView({
             分野：{currentQuestion.category || '思考力'}
           </span>
 
-          {/* 問題文に英語フレーズが含まれる場合は読み上げボタンを表示 */}
-          {subject === 'english' && questionEnglishPart && (
+          {/* 通常問題で英語フレーズが含まれる場合の読み上げボタン */}
+          {isEng && !isListeningQuestion && questionEnglishPart && (
             <button
               type="button"
-              onClick={() => speakEnglishText(questionEnglishPart)}
+              onClick={() => speakEnglishText(questionEnglishPart, 0.85)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-extrabold transition"
             >
               <Volume2 className="w-4 h-4" />
@@ -605,16 +649,40 @@ export function QuizRunnerView({
           )}
         </div>
 
-        <h3 className="text-lg sm:text-xl font-extrabold text-slate-800 leading-relaxed whitespace-pre-line mb-6">
+        <h3 className="text-lg sm:text-xl font-extrabold text-slate-800 leading-relaxed whitespace-pre-line mb-5">
           {currentQuestion.question}
         </h3>
 
-        {/* 4択選択肢（選択ボタンと発音ボタンを分離し、回答後も発音可能に） */}
+        {/* リスニング問題専用の大型音声再生パネル */}
+        {isListeningQuestion && currentQuestion.audioText && (
+          <div className="bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-4 sm:p-5 mb-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => speakEnglishText(currentQuestion.audioText, 0.85)}
+              className="w-full sm:w-auto px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-base rounded-xl transition flex items-center justify-center gap-2.5 shadow-md"
+            >
+              <Volume2 className="w-6 h-6" />
+              <span>英語の発音を聞く</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => speakEnglishText(currentQuestion.audioText, 0.6)}
+              className="w-full sm:w-auto px-4 py-3 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-sm rounded-xl transition flex items-center justify-center gap-1.5"
+            >
+              <Volume2 className="w-4 h-4" />
+              <span>ゆっくり聞く</span>
+            </button>
+          </div>
+        )}
+
+        {/* 4択選択肢（選択ボタンと発音ボタンを独立配置し、回答後も聞き直し可能） */}
         <div className="space-y-3">
           {(currentQuestion.choices || []).map((choice, idx) => {
             const optionLetters = ['A', 'B', 'C', 'D'];
             const isSelected = selectedChoice === choice;
             const isCorrect = choice === currentQuestion.answer;
+            const showChoiceSpeaker = isEng && isEnglishPhrase(choice);
 
             let cardStyle =
               'border-slate-200 bg-white hover:border-indigo-400 hover:bg-indigo-50/40 text-slate-800';
@@ -633,7 +701,6 @@ export function QuizRunnerView({
                 key={`${idx}_${choice}`}
                 className={`w-full rounded-xl border-2 transition flex items-center justify-between gap-2 pr-3 font-bold ${cardStyle}`}
               >
-                {/* 選択肢を選ぶメインボタン領域 */}
                 <button
                   type="button"
                   onClick={() => handleChoiceClick(choice)}
@@ -654,12 +721,11 @@ export function QuizRunnerView({
                   <span className="text-base sm:text-lg">{choice}</span>
                 </button>
 
-                {/* 右側の発音ボタン＆正誤アイコン領域 */}
                 <div className="flex items-center gap-2 shrink-0">
-                  {subject === 'english' && (
+                  {showChoiceSpeaker && (
                     <button
                       type="button"
-                      onClick={() => speakEnglishText(choice)}
+                      onClick={() => speakEnglishText(choice, 0.85)}
                       title={`「${choice}」の発音を聞く`}
                       className="p-2.5 rounded-xl bg-emerald-100/80 hover:bg-emerald-200 text-emerald-800 transition flex items-center gap-1 text-xs font-extrabold"
                     >
@@ -705,14 +771,21 @@ export function QuizRunnerView({
                   )}
                 </div>
 
-                {subject === 'english' && (
+                {isEng && (
                   <button
                     type="button"
-                    onClick={() => speakEnglishText(currentQuestion.answer)}
+                    onClick={() =>
+                      speakEnglishText(
+                        isListeningQuestion ? currentQuestion.audioText : currentQuestion.answer,
+                        0.85
+                      )
+                    }
                     className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-emerald-700 text-xs font-extrabold shadow-2xs"
                   >
                     <Volume2 className="w-3.5 h-3.5" />
-                    正解を発音する
+                    {isListeningQuestion
+                      ? `「${currentQuestion.audioText}」をもう一度聞く`
+                      : '正解を発音する'}
                   </button>
                 )}
               </div>
@@ -759,6 +832,7 @@ export function ResultsView({
   const activeAnswers = activeResult?.answers || answers || userAnswers || {};
   const activeSubject = activeResult?.subject || subject;
   const activeGrade = activeResult?.grade || grade;
+  const isEng = isEnglishSubject(activeSubject);
 
   const totalCount = activeResult?.total || activeQuestions.length || 10;
   const correctCount =
@@ -796,7 +870,7 @@ export function ResultsView({
         <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-extrabold bg-slate-100 text-slate-700 mb-3">
           <span>{meta.label}</span>
           <span>・</span>
-          <span>{activeSubject === 'english' ? '全学年共通' : `小学${activeGrade}年生`}</span>
+          <span>{isEng ? '全学年共通' : `小学${activeGrade}年生`}</span>
         </div>
 
         <h2 className="text-2xl sm:text-3xl font-black text-slate-800 mb-4">
@@ -861,6 +935,7 @@ export function ResultsView({
           {activeQuestions.map((q, idx) => {
             const userAns = activeAnswers[idx];
             const isCorrect = userAns === q.answer;
+            const speakTarget = q.audioText || (isEnglishPhrase(q.answer) ? q.answer : '');
 
             return (
               <div
@@ -876,14 +951,14 @@ export function ResultsView({
                     第 {idx + 1} 問（{q.category || '思考力'}）
                   </span>
                   <div className="flex items-center gap-2">
-                    {activeSubject === 'english' && (
+                    {isEng && speakTarget && (
                       <button
                         type="button"
-                        onClick={() => speakEnglishText(q.answer)}
+                        onClick={() => speakEnglishText(speakTarget, 0.85)}
                         className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition"
                       >
                         <Volume2 className="w-3.5 h-3.5" />
-                        正解を発音
+                        発音を聞く
                       </button>
                     )}
                     {isCorrect ? (
@@ -951,7 +1026,7 @@ export function HistoryView({
   const filteredHistory = useMemo(() => {
     const now = new Date();
     return allHistory.filter((item) => {
-      if (gradeFilter !== 'all' && item.subject !== 'english') {
+      if (gradeFilter !== 'all' && !isEnglishSubject(item.subject)) {
         if (String(item.grade) !== gradeFilter) return false;
       }
 
@@ -976,7 +1051,9 @@ export function HistoryView({
   const subjectStats = useMemo(() => {
     const subjects = ['math', 'japanese', 'english', 'mixed'];
     return subjects.map((subj) => {
-      const items = filteredHistory.filter((r) => r.subject === subj);
+      const items = filteredHistory.filter((r) =>
+        subj === 'english' ? isEnglishSubject(r.subject) : r.subject === subj
+      );
       const count = items.length;
       const avg =
         count > 0
@@ -1156,7 +1233,7 @@ export function HistoryView({
                       {itemMeta.label}
                     </span>
                     <span className="text-xs font-bold text-slate-500">
-                      {item.subject === 'english' ? '全学年共通' : `${item.grade || '2'}年生`}
+                      {isEnglishSubject(item.subject) ? '全学年共通' : `${item.grade || '2'}年生`}
                     </span>
                     <span className="text-xs text-slate-400">
                       {String(item.date || item.createdAt || '').slice(0, 10)}
@@ -1372,7 +1449,7 @@ export function AdminView({
                         </span>
                       </td>
                       <td className="py-2.5 px-3 text-xs font-bold text-slate-600">
-                        {rec.subject === 'english' ? '全学年共通' : `${rec.grade || '2'}年生`}
+                        {isEnglishSubject(rec.subject) ? '全学年共通' : `${rec.grade || '2'}年生`}
                       </td>
                       <td className="py-2.5 px-3 font-extrabold text-slate-800">
                         {rec.score ?? 0} / {rec.total ?? 10}
