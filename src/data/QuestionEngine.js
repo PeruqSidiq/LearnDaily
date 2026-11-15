@@ -1,5 +1,5 @@
 // src/data/QuestionEngine.js
-// 全学年共通の英語入門テスト ＋ 学年別の算数・国語・総合トレーニング統合エンジン
+// 全学年共通の英語入門テスト（通常＋リスニング対応）＆学年別（算数・国語・総合）統合出題エンジン
 
 import { QuestionBank } from './QuestionBank';
 import { MathGenerator } from './MathGenerator';
@@ -23,33 +23,64 @@ export class QuestionEngine {
     return arr;
   }
 
-/**
-   * 問題オブジェクトの形式を統一し、選択肢をシャッフルする
+  /**
+   * 問題オブジェクトの形式を統一し、リスニング用プロパティ（type / audioText）を保持する
    */
   static normalizeQuestions(questions, subject, count = 10) {
     const selected = this.shuffle(questions).slice(0, count);
-    return selected.map((q, index) => ({
-      id: q.id || `${subject}_${Date.now()}_${index + 1}`,
-      subject,
-      type: q.type || 'standard',
-      audioText: q.audioText || '',
-      category: q.category || '思考トレーニング',
-      question: q.question,
-      choices: this.shuffle(q.choices || []),
-      answer: q.answer,
-      explanation: q.explanation || '正解を確認して次に進みましょう！'
-    }));
+    return selected.map((q, index) => {
+      const hasAudio = Boolean(q.audioText && String(q.audioText).trim());
+      return {
+        id: q.id || `${subject}_${Date.now()}_${index + 1}`,
+        subject,
+        type: q.type || (hasAudio ? 'listening' : 'standard'),
+        audioText: q.audioText || '',
+        category: q.category || '思考トレーニング',
+        question: q.question,
+        choices: this.shuffle(q.choices || []),
+        answer: q.answer,
+        explanation: q.explanation || '正解を確認して次に進みましょう！'
+      };
+    });
   }
 
   /**
    * 英語（English）入門問題を取得（2年生・5年生共通）
+   * 通常問題（単語・フレーズ）とリスニング問題がバランスよく出題されます
    */
   static getEnglishQuiz(count = 10) {
     const pool =
       (typeof QuestionBank.getEnglishQuestions === 'function'
         ? QuestionBank.getEnglishQuestions()
         : QuestionBank.ENGLISH_QUESTIONS) || [];
+
+    const standardPool = pool.filter((q) => q.type !== 'listening' && !q.audioText);
+    const listeningPool = pool.filter((q) => q.type === 'listening' || Boolean(q.audioText));
+
+    // リスニング問題が含まれている場合は、10問中3問をリスニング・7問を通常問題にしてバランスよく出題
+    if (listeningPool.length > 0 && standardPool.length > 0 && count >= 4) {
+      const listeningCount = Math.min(3, listeningPool.length);
+      const standardCount = count - listeningCount;
+      const pickedStandard = this.shuffle(standardPool).slice(0, standardCount);
+      const pickedListening = this.shuffle(listeningPool).slice(0, listeningCount);
+      return this.normalizeQuestions([...pickedStandard, ...pickedListening], 'english', count);
+    }
+
     return this.normalizeQuestions(pool, 'english', count);
+  }
+
+  /**
+   * 英語リスニング問題のみを抽出して取得（リスニング集中モード用）
+   */
+  static getEnglishListeningQuiz(count = 10) {
+    const pool =
+      (typeof QuestionBank.getEnglishQuestions === 'function'
+        ? QuestionBank.getEnglishQuestions()
+        : QuestionBank.ENGLISH_QUESTIONS) || [];
+
+    const listeningPool = pool.filter((q) => q.type === 'listening' || Boolean(q.audioText));
+    const targetPool = listeningPool.length > 0 ? listeningPool : pool;
+    return this.normalizeQuestions(targetPool, 'english', count);
   }
 
   /**
@@ -95,9 +126,12 @@ export class QuestionEngine {
    * Gemini API を使って新しい問題を自動生成（APIキー設定時のみ動作）
    */
   static async fetchQuestionsFromGemini(grade, subject, apiKey, count = 10) {
+    const isEnglish = subject === 'english' || subject === 'english_listening';
     const subjectInstruction =
-      subject === 'english'
-        ? '日本の小学生がゼロから楽しく学ぶための「英語入門（あいさつ・数字・色・動物・食べ物・日常フレーズ）」の問題を10問作成してください。問題文と解説はわかりやすい日本語（カタカナ読みヒント付き）にし、選択肢は4つの英単語または短い英語フレーズにしてください。'
+      subject === 'english_listening'
+        ? `日本の小学生がゼロから楽しく学ぶための「英語リスニング問題」を${count}問作成してください。すべての問題で type を "listening" にし、audioText に読み上げる英単語や短い英語フレーズを入れ、question には「【リスニング】スピーカーボタンを押して英語の発音を聞き、正しい意味をえらぼう！」と記載し、choices には4つの日本語の意味を入れてください。`
+        : subject === 'english'
+        ? `日本の小学生がゼロから楽しく学ぶための「英語入門」の問題を${count}問作成してください。内訳は7問を通常問題（type: "standard"、audioText: ""、日本語の問題文＋4つの英語選択肢）、3問をリスニング問題（type: "listening"、audioText: "読み上げる英語"、日本語の意味を4択から選ぶ形式）にしてください。`
         : subject === 'japanese'
         ? `小学${grade}年生向けに、未来を生き抜く読解力・語彙力・論理的思考力を育てる国語の問題を${count}問作成してください。`
         : subject === 'math'
@@ -110,6 +144,8 @@ ${subjectInstruction}
 必ず以下のJSON配列形式のみを出力してください（マークダウン記法や余分な説明文は不要です）：
 [
   {
+    "type": "standard または listening",
+    "audioText": "リスニング問題で読み上げる英語（通常問題の場合は空文字）",
     "category": "分野名",
     "question": "問題文",
     "choices": ["選択肢1", "選択肢2", "選択肢3", "選択肢4"],
@@ -147,7 +183,8 @@ ${subjectInstruction}
       throw new Error('Invalid Gemini response format');
     }
 
-    return this.normalizeQuestions(parsed, subject, count);
+    const normalizedSubject = isEnglish ? 'english' : subject;
+    return this.normalizeQuestions(parsed, normalizedSubject, count);
   }
 
   /**
@@ -173,6 +210,10 @@ ${subjectInstruction}
     }
 
     // 2. 内蔵問題エンジンによる出題（APIキー未設定時・オフライン時）
+    if (targetSubject === 'english_listening') {
+      return this.getEnglishListeningQuiz(10);
+    }
+
     if (targetSubject === 'english') {
       return this.getEnglishQuiz(10);
     }
