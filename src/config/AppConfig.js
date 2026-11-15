@@ -18,6 +18,15 @@ export class AppConfig {
   // =========================================================================
   // 3. Firebase 接続設定（Vercel環境変数または直接入力用）
   // =========================================================================
+  static FIREBASE_CONFIG = { 
+    apiKey: "AIzaSyBbqWjybJrRu4VR90CJohRk-QsbFEFlrj8", 
+    authDomain: "learndaily-69355.firebaseapp.com", 
+    projectId: "learndaily-69355",
+    storageBucket: "learndaily-69355.firebasestorage.app",
+    messagingSenderId: "161457830120", 
+    appId: "1:161457830120:web:d8465efae2b3e95c12f15d",
+    measurementId: "G-RYTSDGW0GP"};
+  
   static FIREBASE_CONFIG = {
     apiKey:
       (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || '',
