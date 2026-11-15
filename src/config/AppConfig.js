@@ -1,12 +1,24 @@
 export class AppConfig {
   static ADMIN_EMAIL = 'peruqsidiq@gmail.com';
-  static APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'yotsuya-otsuka-prep-app';
+  static APP_ID = typeof globalThis.__app_id !== 'undefined' && globalThis.__app_id
+    ? globalThis.__app_id
+    : 'yotsuya-otsuka-prep-app';
   static LOCAL_HISTORY_KEY = 'learn_daily_family_history';
   static LOCAL_GEMINI_KEY = 'learndaily_gemini_api_key';
 
+  static APP_TITLE = '未来を生き抜く 思考力トレーニング';
+  static APP_SUBTITLE = '毎日1回の習慣で、自ら考え・伸び続ける頭を育てる';
+  static APP_BADGE_CHAR = '未';
+
   static getFirebaseConfig() {
-    if (typeof __firebase_config !== 'undefined') {
-      return JSON.parse(__firebase_config);
+    if (typeof globalThis.__firebase_config !== 'undefined' && globalThis.__firebase_config) {
+      try {
+        return typeof globalThis.__firebase_config === 'string'
+          ? JSON.parse(globalThis.__firebase_config)
+          : globalThis.__firebase_config;
+      } catch (e) {
+        console.warn("Invalid __firebase_config JSON, using default config:", e);
+      }
     }
     return {
       apiKey: "AIzaSyBbqWjybJrRu4VR90CJohRk-QsbFEFlrj8",
@@ -20,12 +32,12 @@ export class AppConfig {
   }
 
   static SUBJECT_LABELS = {
-    math: '算数テスト',
-    japanese: '国語テスト',
-    uyghur: 'ウイグル語テスト',
-    daily: '本日の日替わり模試',
-    weakness: '🔥 弱点克服復習',
-    combined: '算国総合模試'
+    math: '算数思考トレーニング',
+    japanese: '国語ことばトレーニング',
+    uyghur: 'ウイグル語トレーニング',
+    daily: '本日の思考力チャレンジ',
+    weakness: '🔥 弱点克服トレーニング',
+    combined: '算国総合思考チャレンジ'
   };
 
   static RADAR_CATEGORIES = [
