@@ -1,14 +1,35 @@
 // src/data/QuestionEngine.js
-// 全学年共通の英語入門テスト（通常＋リスニング対応）＆学年別（算数・国語・総合）＆AI再作成統合エンジン
+// 全学年共通の英語入門テスト（通常＋リスニング対応）＆学年別（算数・国語・総合）＆Firestoreクラウド同期エンジン
 
+import {
+  doc,
+  getDoc,
+  setDoc,
+  deleteDoc,
+  collection,
+  getDocs
+} from 'firebase/firestore';
 import { QuestionBank } from './QuestionBank';
 import { MathGenerator } from './MathGenerator';
 import { QuizUtils } from '../utils/QuizUtils';
 import { AppConfig } from '../config/AppConfig';
 
 const CUSTOM_AI_STORAGE_KEY = 'learndaily_custom_ai_sets';
+const FIRESTORE_COLLECTION = 'custom_ai_quizzes';
 
 export class QuestionEngine {
+  // App.jsx 等から渡される Firestore インスタンスを保持
+  static firestoreDb = null;
+
+  /**
+   * Firestore の db インスタンスを登録する
+   */
+  static setFirestoreDb(dbInstance) {
+    if (dbInstance) {
+      this.firestoreDb = dbInstance;
+    }
+  }
+
   /**
    * 配列を安全にシャッフルする内部ヘルパー
    */
@@ -26,7 +47,7 @@ export class QuestionEngine {
   }
 
   /**
-   * 管理画面で保存するカスタム問題セット用のストレージキーを生成
+   * カスタム問題セット用のキー（FirestoreドキュメントID兼用）を生成
    */
   static getCustomSetKey(grade, subject) {
     if (subject === 'english' || subject === 'english_listening') {
@@ -36,46 +57,9 @@ export class QuestionEngine {
   }
 
   /**
-   * AIが再作成した問題セットをローカルストレージに保存（本番テストへ適用）
+   * ローカルキャッシュから全カスタムセットを読み込む
    */
-  static saveCustomAiQuestions(grade, subject, questions) {
-    if (typeof localStorage === 'undefined' || !Array.isArray(questions)) return;
-    try {
-      const raw = localStorage.getItem(CUSTOM_AI_STORAGE_KEY);
-      const store = raw ? JSON.parse(raw) : {};
-      const key = this.getCustomSetKey(grade, subject);
-      store[key] = {
-        updatedAt: new Date().toISOString(),
-        grade: String(grade),
-        subject,
-        questions
-      };
-      localStorage.setItem(CUSTOM_AI_STORAGE_KEY, JSON.stringify(store));
-    } catch (e) {
-      console.error('カスタムAI問題の保存エラー:', e);
-    }
-  }
-
-  /**
-   * 適用中のカスタムAI問題セットを取得
-   */
-  static getCustomAiQuestions(grade, subject) {
-    if (typeof localStorage === 'undefined') return null;
-    try {
-      const raw = localStorage.getItem(CUSTOM_AI_STORAGE_KEY);
-      if (!raw) return null;
-      const store = JSON.parse(raw);
-      const key = this.getCustomSetKey(grade, subject);
-      return store[key] || null;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * 適用中のカスタムAI問題セットをすべて取得（管理画面の一覧表示用）
-   */
-  static getAllCustomAiSets() {
+  static getAllCustomAiSetsFromLocal() {
     if (typeof localStorage === 'undefined') return {};
     try {
       const raw = localStorage.getItem(CUSTOM_AI_STORAGE_KEY);
@@ -86,23 +70,146 @@ export class QuestionEngine {
   }
 
   /**
-   * 適用中のカスタムAI問題セットを解除（標準出題に戻す）
+   * AIが再作成した問題セットをローカル＆Firestoreの両方に保存（全端末へ同期）
    */
-  static clearCustomAiQuestions(grade, subject) {
-    if (typeof localStorage === 'undefined') return;
-    try {
-      if (!subject) {
-        localStorage.removeItem(CUSTOM_AI_STORAGE_KEY);
-        return;
+  static async saveCustomAiQuestions(grade, subject, questions, updatedBy = '') {
+    if (!Array.isArray(questions) || questions.length === 0) return false;
+    const key = this.getCustomSetKey(grade, subject);
+    const payload = {
+      updatedAt: new Date().toISOString(),
+      updatedBy: updatedBy || 'admin',
+      grade: String(grade),
+      subject,
+      questions
+    };
+
+    // 1. ローカルストレージへ即座に保存
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const store = this.getAllCustomAiSetsFromLocal();
+        store[key] = payload;
+        localStorage.setItem(CUSTOM_AI_STORAGE_KEY, JSON.stringify(store));
+      } catch (e) {
+        console.warn('ローカルキャッシュ保存スキップ:', e);
       }
-      const raw = localStorage.getItem(CUSTOM_AI_STORAGE_KEY);
-      if (!raw) return;
-      const store = JSON.parse(raw);
-      const key = this.getCustomSetKey(grade, subject);
-      delete store[key];
-      localStorage.setItem(CUSTOM_AI_STORAGE_KEY, JSON.stringify(store));
-    } catch (e) {
-      console.error('カスタムAI問題の解除エラー:', e);
+    }
+
+    // 2. Firestore へクラウド保存（別端末・スマホ・タブレットと共有）
+    if (this.firestoreDb) {
+      try {
+        const ref = doc(this.firestoreDb, FIRESTORE_COLLECTION, key);
+        await setDoc(ref, payload);
+        return true;
+      } catch (err) {
+        console.error('Firestoreへのカスタム問題保存エラー:', err);
+        throw new Error(
+          `Firestoreへの保存に失敗しました（${err?.message || '権限または通信エラー'}）`
+        );
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * 適用中のカスタムAI問題セットを取得（Firestore優先 → ローカルキャッシュフォールバック）
+   */
+  static async getCustomAiQuestions(grade, subject) {
+    const key = this.getCustomSetKey(grade, subject);
+
+    // 1. Firestore から最新を取得
+    if (this.firestoreDb) {
+      try {
+        const ref = doc(this.firestoreDb, FIRESTORE_COLLECTION, key);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const data = snap.data();
+          // ローカルキャッシュも最新に更新
+          if (typeof localStorage !== 'undefined') {
+            const store = this.getAllCustomAiSetsFromLocal();
+            store[key] = data;
+            localStorage.setItem(CUSTOM_AI_STORAGE_KEY, JSON.stringify(store));
+          }
+          return data;
+        } else {
+          // Firestore上で解除済みの場合はローカル側も同期削除
+          if (typeof localStorage !== 'undefined') {
+            const store = this.getAllCustomAiSetsFromLocal();
+            if (store[key]) {
+              delete store[key];
+              localStorage.setItem(CUSTOM_AI_STORAGE_KEY, JSON.stringify(store));
+            }
+          }
+          return null;
+        }
+      } catch (err) {
+        console.warn('Firestoreからの問題取得に失敗したためローカルキャッシュを使用します:', err);
+      }
+    }
+
+    // 2. ローカルキャッシュから取得
+    const localStore = this.getAllCustomAiSetsFromLocal();
+    return localStore[key] || null;
+  }
+
+  /**
+   * Firestore 上のすべてのカスタムAI問題セットを取得してローカルと同期（ホーム・管理画面用）
+   */
+  static async syncAllCustomAiSetsFromFirestore() {
+    if (!this.firestoreDb) {
+      return this.getAllCustomAiSetsFromLocal();
+    }
+
+    try {
+      const colRef = collection(this.firestoreDb, FIRESTORE_COLLECTION);
+      const snapshot = await getDocs(colRef);
+      const syncedStore = {};
+      snapshot.forEach((docSnap) => {
+        syncedStore[docSnap.id] = docSnap.data();
+      });
+
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(CUSTOM_AI_STORAGE_KEY, JSON.stringify(syncedStore));
+      }
+      return syncedStore;
+    } catch (err) {
+      console.warn('Firestoreカスタム問題一覧の同期エラー:', err);
+      return this.getAllCustomAiSetsFromLocal();
+    }
+  }
+
+  /**
+   * 適用中のカスタムAI問題セットをローカル＆Firestoreの両方から解除
+   */
+  static async clearCustomAiQuestions(grade, subject) {
+    const key = subject ? this.getCustomSetKey(grade, subject) : null;
+
+    // 1. ローカルから削除
+    if (typeof localStorage !== 'undefined') {
+      try {
+        if (!key) {
+          localStorage.removeItem(CUSTOM_AI_STORAGE_KEY);
+        } else {
+          const store = this.getAllCustomAiSetsFromLocal();
+          delete store[key];
+          localStorage.setItem(CUSTOM_AI_STORAGE_KEY, JSON.stringify(store));
+        }
+      } catch (e) {
+        console.warn('ローカルキャッシュ削除エラー:', e);
+      }
+    }
+
+    // 2. Firestore から削除
+    if (this.firestoreDb && key) {
+      try {
+        const ref = doc(this.firestoreDb, FIRESTORE_COLLECTION, key);
+        await deleteDoc(ref);
+      } catch (err) {
+        console.error('Firestoreのカスタム問題解除エラー:', err);
+        throw new Error(
+          `Firestoreからの解除に失敗しました（${err?.message || '権限または通信エラー'}）`
+        );
+      }
     }
   }
 
@@ -262,7 +369,9 @@ ${subjectInstruction}${topicConstraint}
     });
 
     if (!response.ok) {
-      throw new Error(`Gemini APIエラー (ステータス: ${response.status})。APIキーが正しいか確認してください。`);
+      throw new Error(
+        `Gemini APIエラー (ステータス: ${response.status})。APIキーが正しいか確認してください。`
+      );
     }
 
     const data = await response.json();
@@ -283,8 +392,8 @@ ${subjectInstruction}${topicConstraint}
   static async generateQuiz(grade, subject, customApiKey = '', seedOffset = 0) {
     const targetSubject = subject || 'math';
 
-    // 1. 管理画面で「AI再作成して適用（保存）」されたカスタム問題セットがある場合は優先出題
-    const savedCustom = this.getCustomAiQuestions(grade, targetSubject);
+    // 1. Firestore / ローカルに保存された「AI再作成カスタム問題セット」があれば最優先で出題
+    const savedCustom = await this.getCustomAiQuestions(grade, targetSubject);
     if (savedCustom && Array.isArray(savedCustom.questions) && savedCustom.questions.length > 0) {
       const normalizedSubject =
         targetSubject === 'english_listening' ? 'english' : targetSubject;
