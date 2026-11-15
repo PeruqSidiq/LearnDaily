@@ -2,7 +2,7 @@ import React from 'react';
 import {
   Trophy, BookOpen, Calculator, CheckCircle2, User, LogOut, BarChart2,
   ChevronRight, Sparkles, Check, History, ArrowRight, Calendar, Flame,
-  RefreshCw, Zap, ShieldCheck, Users, Filter, CalendarDays, Timer, Target, RotateCcw
+  RefreshCw, Zap, ShieldCheck, Users, Filter, CalendarDays, Timer, Target, RotateCcw, Globe
 } from 'lucide-react';
 import { QuizUtils } from '../utils/QuizUtils.js';
 import { PeriodFilterButtons, AnalyticsChartsGrid } from './CommonUI.jsx';
@@ -55,9 +55,9 @@ export function HomeView({
           <div className="flex items-center gap-1.5">
             <Timer className={`w-4 h-4 ${isTimerEnabled ? 'text-rose-600' : 'text-slate-400'}`} />
             <div>
-              <div className="text-xs font-extrabold text-slate-800">本番制限時間タイマー</div>
+              <div className="text-xs font-extrabold text-slate-800">集中チャレンジタイマー</div>
               <div className="text-[10px] text-slate-500">
-                {isTimerEnabled ? 'ON (10問=15分 / 20問=30分)' : 'OFF (時間無制限でじっくり)'}
+                {isTimerEnabled ? 'ON (10問=15分 / 20問=30分)' : 'OFF (時間無制限でじっくり思考)'}
               </div>
             </div>
           </div>
@@ -84,15 +84,15 @@ export function HomeView({
           <div className="max-w-xl space-y-3">
             <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-md px-3.5 py-1 rounded-full text-xs font-bold text-amber-100 border border-white/30">
               <Calendar className="w-4 h-4 text-amber-200" />
-              【{selectedGrade === 'grade2' ? '小学2年生用' : '小学5年生用'}】本日の20問模試（毎回数値・問題自動生成）
+              【{selectedGrade === 'grade2' ? '小学2年生用' : '小学5年生用'}】本日の20問思考力チャレンジ（毎回数値・問題自動生成）
             </div>
 
             <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
-              毎日1回の習慣で差がつく！<br />算数10問・国語10問の日替わり模試
+              毎日1回の習慣で未来を拓く！<br />算数10問・国語10問の日替わりチャレンジ
             </h2>
 
             <p className="text-amber-100 text-xs sm:text-sm leading-relaxed">
-              {displayName} さん専用の日替わり問題（算数10問・国語10問）を毎回新しい数値・組み合わせで自動生成します。本番さながらのタイマー意識で実力を出し切りましょう！
+              {displayName} さん専用の日替わり思考力問題（算数10問・国語10問）を毎回新しい数値・組み合わせで自動生成します。自分の頭でじっくり考えて、伸び続ける力を育てましょう！
             </p>
 
             <div className="flex items-center gap-4 pt-2 flex-wrap">
@@ -107,7 +107,7 @@ export function HomeView({
               <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20">
                 <CheckCircle2 className={`w-6 h-6 ${streakInfo.testedToday ? 'text-emerald-300' : 'text-slate-300'}`} />
                 <div>
-                  <div className="text-[10px] text-amber-200 uppercase font-bold tracking-wider">本日のテスト</div>
+                  <div className="text-[10px] text-amber-200 uppercase font-bold tracking-wider">本日のチャレンジ</div>
                   <div className="text-sm font-bold leading-none">
                     {streakInfo.testedToday ? '完了済み ✓' : '未完了'}
                   </div>
@@ -130,7 +130,7 @@ export function HomeView({
               ) : (
                 <>
                   <Zap className="w-5 h-5 text-amber-500 fill-amber-500" />
-                  <span>{streakInfo.testedToday ? '新しい問題でもう一度20問解く' : '本日の20問テストを開始'}</span>
+                  <span>{streakInfo.testedToday ? '新しい問題でもう一度20問解く' : '本日の20問チャレンジを開始'}</span>
                   <ChevronRight className="w-5 h-5 text-slate-400" />
                 </>
               )}
@@ -158,8 +158,8 @@ export function HomeView({
             </div>
             <p className="text-xs text-slate-600 mt-1 leading-relaxed">
               {wrongQuestionsCount > 0
-                ? '過去のテストで間違えた問題だけを自動ピックアップ！本番前に苦手をつぶして得点力を底上げしましょう（最大10問出題）。'
-                : 'まだ間違えた問題のストックがありません。テストを受けると間違えた問題が自動的にここへ集まります！'}
+                ? '過去に間違えた問題だけを自動ピックアップ！「できなかった」を「できる！」に変えて思考力を伸ばしましょう（最大10問出題）。'
+                : 'まだ間違えた問題のストックがありません。チャレンジを進めると間違えた問題が自動的にここへ集まります！'}
             </p>
           </div>
         </div>
@@ -184,10 +184,10 @@ export function HomeView({
       <div>
         <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
           <BookOpen className="w-5 h-5 text-indigo-600" />
-          分野別・総合練習テスト（{selectedGrade === 'grade2' ? '2年生向け' : '5年生向け'}）
+          分野別・総合思考トレーニング（{selectedGrade === 'grade2' ? '2年生向け' : '5年生向け'} / 語学は全学年共通）
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between group">
             <div>
               <div className="flex justify-between items-start mb-3">
@@ -199,7 +199,7 @@ export function HomeView({
                 </span>
               </div>
               <h4 className="font-extrabold text-slate-900 text-lg mb-1 group-hover:text-blue-600 transition">
-                算数 実戦対策テスト
+                算数 思考トレーニング
               </h4>
               <p className="text-slate-500 text-xs leading-relaxed mb-4">
                 {selectedGrade === 'grade2'
@@ -211,7 +211,7 @@ export function HomeView({
               onClick={() => onStartSubjectQuiz('math')}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-sm"
             >
-              算数10問テストを開始
+              算数10問を開始
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -227,7 +227,7 @@ export function HomeView({
                 </span>
               </div>
               <h4 className="font-extrabold text-slate-900 text-lg mb-1 group-hover:text-rose-600 transition">
-                国語 実戦対策テスト
+                国語 ことばトレーニング
               </h4>
               <p className="text-slate-500 text-xs leading-relaxed mb-4">
                 {selectedGrade === 'grade2'
@@ -239,7 +239,33 @@ export function HomeView({
               onClick={() => onStartSubjectQuiz('japanese')}
               className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-sm"
             >
-              国語10問テストを開始
+              国語10問を開始
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between group">
+            <div>
+              <div className="flex justify-between items-start mb-3">
+                <div className="w-12 h-12 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center font-bold">
+                  <Globe className="w-6 h-6" />
+                </div>
+                <span className="bg-sky-50 text-sky-700 font-semibold text-xs px-2.5 py-1 rounded-full border border-sky-200">
+                  英語 10問 / 全学年共通
+                </span>
+              </div>
+              <h4 className="font-extrabold text-slate-900 text-lg mb-1 group-hover:text-sky-600 transition">
+                英語 (English) 入門
+              </h4>
+              <p className="text-slate-500 text-xs leading-relaxed mb-4">
+                これから英語を始めるお子様向け！あいさつ、数字・色・動物・くだもの・家族などの身近な英単語と基本フレーズ10問です。
+              </p>
+            </div>
+            <button
+              onClick={() => onStartSubjectQuiz('english')}
+              className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-2.5 rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-sm"
+            >
+              英語10問を開始
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -255,7 +281,7 @@ export function HomeView({
                 </span>
               </div>
               <h4 className="font-extrabold text-slate-900 text-lg mb-1 group-hover:text-emerald-600 transition">
-                ウイグル語 (ئۇيغۇرچە) テスト
+                ウイグル語 (ئۇيغۇرچە)
               </h4>
               <p className="text-slate-500 text-xs leading-relaxed mb-4">
                 ウイグル文字（アラビア文字表記）、日常単語（くだもの・家族・数・水・動物）、挨拶、自己紹介など10問出題します。
@@ -265,7 +291,7 @@ export function HomeView({
               onClick={() => onStartSubjectQuiz('uyghur')}
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-sm"
             >
-              ウイグル語10問テストを開始
+              ウイグル語10問を開始
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -284,17 +310,17 @@ export function HomeView({
                 </span>
               </div>
               <h4 className="font-extrabold text-white text-lg mb-1">
-                算国 20問 総合実戦模試
+                算国 20問 総合チャレンジ
               </h4>
               <p className="text-slate-300 text-xs leading-relaxed mb-4">
-                算数10問と国語10問（合計20問）のフルセット模試。毎回新しい数値と出題セットで実力を測ります。
+                算数10問と国語10問（合計20問）のフルセット。毎回新しい数値と出題セットで論理力と読解力をバランスよく鍛えます。
               </p>
             </div>
             <button
               onClick={() => onStartSubjectQuiz('combined')}
               className="w-full bg-amber-400 hover:bg-amber-500 text-blue-950 font-extrabold py-2.5 rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-lg"
             >
-              総合模試（20問）を開始
+              総合チャレンジ（20問）を開始
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -326,6 +352,8 @@ export function QuizRunnerView({
           <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-100">
             {selectedSubject === 'weakness'
               ? '🔥 弱点克服復習'
+              : selectedSubject === 'english' || selectedSubject === 'uyghur'
+              ? `全学年共通 / ${QuizUtils.getSubjectLabel(selectedSubject)}`
               : `${selectedGrade === 'grade2' ? '2年生' : '5年生'} / ${QuizUtils.getSubjectLabel(selectedSubject)}`}
           </span>
           <span className="text-xs font-semibold text-slate-600">
@@ -404,7 +432,7 @@ export function QuizRunnerView({
               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
           }`}
         >
-          {currentIdx + 1 < currentQuestions.length ? '次の問題へ' : 'テストを提出して結果を見る'}
+          {currentIdx + 1 < currentQuestions.length ? '次の問題へ' : '回答を提出して結果を見る'}
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
@@ -428,7 +456,7 @@ export function ResultsView({
         <div className="bg-amber-100 border-2 border-amber-400 text-amber-950 p-4 rounded-2xl text-xs font-bold flex items-center gap-3 shadow-sm">
           <Timer className="w-6 h-6 text-amber-600 flex-shrink-0" />
           <div>
-            制限時間が終了したため、自動的に提出されました！本番ではわからない問題を飛ばして時間内に解き切る練習を続けましょう。
+            制限時間が終了したため、自動的に提出されました！時間配分を意識して、解ける問題から着実に解き切る力を伸ばしましょう。
           </div>
         </div>
       )}
@@ -437,7 +465,7 @@ export function ResultsView({
         <div className="inline-block bg-indigo-50 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full mb-2">
           {QuizUtils.getSubjectLabel(item.subject)} ({item.gradeLabel || '標準'} - {item.dateStr})
         </div>
-        <h2 className="text-2xl font-black text-slate-900 mb-4">採点結果発表</h2>
+        <h2 className="text-2xl font-black text-slate-900 mb-4">結果＆振り返りシート</h2>
 
         <div className="flex items-center justify-center gap-6 my-4">
           <div>
@@ -462,8 +490,8 @@ export function ResultsView({
           )}
         </div>
 
-        <div className="max-w-sm mx-auto bg-slate-50 rounded-xl p-3 border border-slate-200 mt-4">
-          <div className="text-xs text-slate-500">四谷大塚 クラス判定目安</div>
+        <div className="max-w-md mx-auto bg-slate-50 rounded-xl p-3 border border-slate-200 mt-4">
+          <div className="text-xs text-slate-500">思考力成長ステージ判定</div>
           <div className="font-extrabold text-sm text-indigo-900 mt-0.5">
             {QuizUtils.getRankBadge(item.percentage).title}
           </div>
@@ -497,7 +525,7 @@ export function ResultsView({
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
         <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 border-b border-slate-100 pb-3">
           <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-          問題ごとの詳細と解説
+          問題ごとの詳細と考え方の解説
         </h3>
 
         {item.answeredBreakdown.map((entry, idx) => (
@@ -543,7 +571,7 @@ export function ResultsView({
                 </div>
               )}
               <div className="mt-2 pt-2 border-t border-slate-100 text-slate-600 whitespace-pre-line leading-relaxed bg-slate-50 p-2 rounded">
-                <strong className="text-indigo-900 block mb-1">【解説】</strong>
+                <strong className="text-indigo-900 block mb-1">【考え方の解説】</strong>
                 {entry.explanation}
               </div>
             </div>
@@ -572,15 +600,15 @@ export function HistoryView({
         <div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <BarChart2 className="w-6 h-6 text-indigo-600" />
-            学習実績・成績ダッシュボード
+            思考力成長・成績ダッシュボード
           </h2>
           <p className="text-xs text-slate-500">
-            {displayName} さんのテスト履歴と全期間・月別の分析結果です。
+            {displayName} さんのトレーニング履歴と全期間・月別の成長分析です。
           </p>
         </div>
 
         <div className={`px-4 py-2 rounded-xl border text-xs font-bold ${currentRank.border} ${currentRank.color}`}>
-          判定: {currentRank.title}
+          ステージ: {currentRank.title}
         </div>
       </div>
 
@@ -600,19 +628,19 @@ export function HistoryView({
       <AnalyticsChartsGrid
         radarData={radarData}
         scoreTrendData={scoreTrendData}
-        radarTitle="指定期間の分野別理解度（レーダー）"
-        trendTitle="得点率の推移（成長グラフ）"
+        radarTitle="指定期間の分野別思考力バランス（レーダー）"
+        trendTitle="正答率の伸び（成長グラフ）"
       />
 
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
         <h3 className="font-bold text-slate-900 text-sm mb-4 flex items-center gap-2">
           <History className="w-4 h-4 text-indigo-600" />
-          テスト履歴一覧 ({filteredHistoryDocs.length} 件)
+          トレーニング履歴一覧 ({filteredHistoryDocs.length} 件)
         </h3>
 
         {filteredHistoryDocs.length === 0 ? (
           <div className="text-center py-8 text-xs text-slate-400">
-            該当する期間のテスト履歴がありません。
+            該当する期間の履歴がありません。
           </div>
         ) : (
           <div className="space-y-3">
@@ -638,7 +666,7 @@ export function HistoryView({
                   <div className="text-right">
                     <div className="font-extrabold text-base text-indigo-600">{item.percentage}%</div>
                     <div className="text-[10px] text-emerald-600 font-semibold">
-                      {item.percentage >= 60 ? '合格基準達成' : '要復習'}
+                      {item.percentage >= 70 ? 'ナイス思考力！' : '解説でステップアップ'}
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -683,7 +711,7 @@ export function AdminView({
             <div className="inline-block bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-400/30 mb-1">
               管理者認証済み: {userEmail}
             </div>
-            <h2 className="text-xl font-black text-white">家族全員の学習分析・歴史管理</h2>
+            <h2 className="text-xl font-black text-white">家族全員の思考力成長・歴史管理</h2>
           </div>
         </div>
 
@@ -704,7 +732,7 @@ export function AdminView({
             <span>Gemini AI 問題生成キー設定（任意）</span>
           </div>
           <p className="text-[11px] text-slate-500 mt-0.5">
-            未設定でも内蔵の「毎日自動問題生成エンジン」で毎回異なる問題が出題されます。APIキーを設定するとAIによる完全オリジナル問題も生成できます。
+            未設定でも内蔵の「毎日自動問題生成エンジン」で毎回異なる問題が出題されます。APIキーを設定するとAIによる完全オリジナル思考力問題も生成できます。
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -777,7 +805,7 @@ export function AdminView({
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <h3 className="font-bold text-slate-800 text-sm mb-3 flex items-center gap-2">
           <Flame className="w-5 h-5 text-amber-500" />
-          直近30日間の学習実施カレンダー（緑色＝受検完了）
+          直近30日間の学習実施カレンダー（緑色＝実施完了）
         </h3>
         <div className="grid grid-cols-6 sm:grid-cols-10 gap-2">
           {calendar30Days.map((d, idx) => (
@@ -799,20 +827,20 @@ export function AdminView({
       <AnalyticsChartsGrid
         radarData={radarData}
         scoreTrendData={scoreTrendData}
-        radarTitle="選択したお子様・期間の分野別理解度"
-        trendTitle="得点成長グラフ"
+        radarTitle="選択したお子様・期間の分野別思考力バランス"
+        trendTitle="正答率成長グラフ"
       />
 
       {/* Full History List */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
         <h3 className="font-bold text-slate-900 text-sm mb-4 flex items-center gap-2">
           <History className="w-4 h-4 text-indigo-600" />
-          全テスト履歴詳細・誤答復習 ({filteredHistoryDocs.length} 件)
+          全トレーニング履歴詳細・誤答復習 ({filteredHistoryDocs.length} 件)
         </h3>
 
         {filteredHistoryDocs.length === 0 ? (
           <div className="text-center py-8 text-xs text-slate-400">
-            該当するテスト記録がありません。
+            該当する学習記録がありません。
           </div>
         ) : (
           <div className="space-y-3">
