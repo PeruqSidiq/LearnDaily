@@ -1,292 +1,451 @@
+// src/data/QuestionBank.js
+// 全学年共通の英語入門問題 ＋ 2年生・5年生向けの国語・算数問題バンク
+
 export class QuestionBank {
-  static JAPANESE_G2 = [
+  // =========================================================================
+  // 1. 英語（English）入門トレーニング問題（全25問・全学年共通）
+  // =========================================================================
+  static ENGLISH_QUESTIONS = [
+    // --- あいさつ・基本表現 ---
     {
-      id: "j2_1", category: "漢字の読み", categoryName: "国語漢字",
-      question: "「青い 空」の「青い」の かんじの よみかたは どれですか。",
-      options: ["あおい", "しろい", "くろい", "あかい"], correctIndex: 0,
-      explanation: "「青い」は「あおい」と よみます。"
+      id: 'en_01',
+      category: 'あいさつ',
+      question: '朝（あさ）に会ったときのあいさつ「おはよう」は英語でどれ？',
+      choices: ['Good morning', 'Good night', 'Thank you', 'Goodbye'],
+      answer: 'Good morning',
+      explanation: 'Good morning（グッド モーニング）は「おはよう」という意味です。'
     },
     {
-      id: "j2_2", category: "反対の言葉", categoryName: "語彙文法",
-      question: "「広い（ひろい）」の はんたいの いみの 言葉は どれですか。",
-      options: ["狭い（せまい）", "高い（たかい）", "長い（ながい）", "大きい（おおきい）"], correctIndex: 0,
-      explanation: "「広い」の はんたいは「狭い（せまい）」です。"
+      id: 'en_02',
+      category: 'あいさつ',
+      question: '誰かに何かをしてもらったときの「ありがとう」は英語でどれ？',
+      choices: ['Thank you', 'Excuse me', 'I am sorry', 'Hello'],
+      answer: 'Thank you',
+      explanation: 'Thank you（サンキュー）は感謝を伝える「ありがとう」です。'
     },
     {
-      id: "j2_3", category: "ことばのきまり", categoryName: "語彙文法",
-      question: "（　）に はいる つなぎの 言葉は どれですか。\n「あさ起きて、顔を あらった。（　）あさごはんを たべた。」",
-      options: ["それから", "しかし", "だから", "なぜなら"], correctIndex: 0,
-      explanation: "じゅんじょよく つづける ときは「それから」を つかいます。"
+      id: 'en_03',
+      category: 'あいさつ',
+      question: '夜、寝る前に言う「おやすみなさい」は英語でどれ？',
+      choices: ['Good night', 'Good afternoon', 'See you', 'Welcome'],
+      answer: 'Good night',
+      explanation: 'Good night（グッド ナイト）は夜寝る前の「おやすみなさい」です。'
     },
     {
-      id: "j2_4", category: "漢字のかき", categoryName: "国語漢字",
-      question: "「がっこう」の「こう」の かんじは どれですか。",
-      options: ["校", "交", "高", "光"], correctIndex: 0,
-      explanation: "「学校」の「校（こう）」が 正しい かんじです。"
+      id: 'en_04',
+      category: 'あいさつ',
+      question: '初めて会った人に「はじめまして」と伝える英語はどれ？',
+      choices: ['Nice to meet you', 'How old are you', 'Happy birthday', 'Good luck'],
+      answer: 'Nice to meet you',
+      explanation: 'Nice to meet you（ナイス トゥ ミート ユー）で「はじめまして」になります。'
     },
     {
-      id: "j2_5", category: "丁寧な言葉", categoryName: "語彙文法",
-      question: "「食べる」を ていねいな 言葉（です・ます）に すると どれになりますか。",
-      options: ["食べます", "食べた", "食べろ", "食べたい"], correctIndex: 0,
-      explanation: "「食べる」の ていねいな 言いかたは「食べます」です。"
+      id: 'en_05',
+      category: 'あいさつ',
+      question: '友だちと別れるときの「またね（さようなら）」は英語でどれ？',
+      choices: ['See you', 'Thank you', 'Here you are', 'Come here'],
+      answer: 'See you',
+      explanation: 'See you（シー ユー）は「またね！」という親しみのあるあいさつです。'
+    },
+
+    // --- 数字・曜日 ---
+    {
+      id: 'en_06',
+      category: '数字・曜日',
+      question: '数字の「3」を表す英単語はどれ？',
+      choices: ['three', 'two', 'four', 'five'],
+      answer: 'three',
+      explanation: '1＝one、2＝two、3＝three（スリー）、4＝four、5＝five です。'
     },
     {
-      id: "j2_6", category: "主語と述語", categoryName: "語彙文法",
-      question: "つぎの ぶんの「だれが」にあたる ことばは どれですか。\n「かわいい こねこが にわで 元気に あそんでいる。」",
-      options: ["こねこが", "かわいい", "にわで", "あそんでいる"], correctIndex: 0,
-      explanation: "「だれが（なにが）」にあたるのは「こねこが」です。"
+      id: 'en_07',
+      category: '数字・曜日',
+      question: '数字の「7」を表す英単語はどれ？',
+      choices: ['seven', 'six', 'eight', 'nine'],
+      answer: 'seven',
+      explanation: '6＝six、7＝seven（セブン）、8＝eight、9＝nine、10＝ten です。'
     },
     {
-      id: "j2_7", category: "擬音語・擬態語", categoryName: "語彙文法",
-      question: "雨が はげしく ふる ようすを あらわす 言葉は どれですか。",
-      options: ["ザーザー", "しとしと", "ぽつぽつ", "ニコニコ"], correctIndex: 0,
-      explanation: "つよい雨が ふる ようすは「ザーザー」です。"
+      id: 'en_08',
+      category: '数字・曜日',
+      question: '数字の「10」を表す英単語はどれ？',
+      choices: ['ten', 'one', 'two', 'twelve'],
+      answer: 'ten',
+      explanation: 'ten（テン）は数字の「10」を表します。'
     },
     {
-      id: "j2_8", category: "指示語", categoryName: "読解力",
-      question: "「これ」が さしている ものは どれですか。\n「けんた君は 赤い かさを 忘れた。それに 気づいた ぼくは、これを とどけた。」",
-      options: ["赤いかさ", "けんた君", "ぼく", "がっこう"], correctIndex: 0,
-      explanation: "「これ」は 直前の「赤いかさ」を さしています。"
+      id: 'en_09',
+      category: '数字・曜日',
+      question: '「日曜日（にちようび）」を表す英単語はどれ？',
+      choices: ['Sunday', 'Monday', 'Friday', 'Saturday'],
+      answer: 'Sunday',
+      explanation: 'Sun（太陽）の日で Sunday（サンデー）＝日曜日です。'
+    },
+
+    // --- 色（カラー） ---
+    {
+      id: 'en_10',
+      category: '色・かたち',
+      question: '「赤色（あかいろ）」を表す英単語はどれ？',
+      choices: ['red', 'blue', 'yellow', 'green'],
+      answer: 'red',
+      explanation: 'red（レッド）は「赤」、blue（ブルー）は「青」です。'
     },
     {
-      id: "j2_9", category: "ことわざ", categoryName: "語彙文法",
-      question: "「早起きは 三文の ◯」の ◯に はいる 言葉は どれですか。",
-      options: ["得（とく）", "損（そん）", "円（えん）", "本（ほん）"], correctIndex: 0,
-      explanation: "「早起きは 三文の 得（とく）」ということわざです。"
+      id: 'en_11',
+      category: '色・かたち',
+      question: '「青色（あおいろ）」を表す英単語はどれ？',
+      choices: ['blue', 'black', 'white', 'pink'],
+      answer: 'blue',
+      explanation: 'blue（ブルー）は空や海のような「青色」を表します。'
     },
     {
-      id: "j2_10", category: "気持ちのりかい", categoryName: "読解力",
-      question: "つぎの ぶんを よんで、下せんぶの ときの 気持ちとして 正しいものは どれですか。\n「かけっこで 1いになれた とき、ぼくは おもわず とびあがって よろこんだ。」",
-      options: ["とても うれしい 気持ち", "くやしくて かなしい 気持ち", "びくびく している 気持ち", "ねむい 気持ち"], correctIndex: 0,
-      explanation: "「1いになれて おもわず とびあがった」ことから、とても うれしい 気持ちが わかります。"
+      id: 'en_12',
+      category: '色・かたち',
+      question: '「黄色（きいろ）」を表す英単語はどれ？',
+      choices: ['yellow', 'green', 'orange', 'purple'],
+      answer: 'yellow',
+      explanation: 'yellow（イエロー）はレモンやバナナのような「黄色」です。'
     },
     {
-      id: "j2_11", category: "漢字の読み", categoryName: "国語漢字",
-      question: "「毎日 元気に 走る」の「毎日」の よみかたは どれですか。",
-      options: ["まいにち", "まいとし", "まいつき", "まいしゅう"], correctIndex: 0,
-      explanation: "「毎日」は「まいにち」と よみます。"
+      id: 'en_13',
+      category: '色・かたち',
+      question: '「緑色（みどりいろ）」を表す英単語はどれ？',
+      choices: ['green', 'gray', 'brown', 'white'],
+      answer: 'green',
+      explanation: 'green（グリーン）は葉っぱや森のような「緑色」です。'
+    },
+
+    // --- 動物・生き物 ---
+    {
+      id: 'en_14',
+      category: '動物',
+      question: '「犬（いぬ）」を表す英単語はどれ？',
+      choices: ['dog', 'cat', 'bird', 'fish'],
+      answer: 'dog',
+      explanation: 'dog（ドッグ）は「犬」、cat（キャット）は「猫」です。'
     },
     {
-      id: "j2_12", category: "反対の言葉", categoryName: "語彙文法",
-      question: "「強い（つよい）」の はんたいの いみの 言葉は どれですか。",
-      options: ["弱い（よわい）", "重い（おもい）", "早い（はやい）", "暗い（くらい）"], correctIndex: 0,
-      explanation: "「強い」の はんたいは「弱い（よわい）」です。"
+      id: 'en_15',
+      category: '動物',
+      question: '「猫（ねこ）」を表す英単語はどれ？',
+      choices: ['cat', 'rabbit', 'bear', 'lion'],
+      answer: 'cat',
+      explanation: 'cat（キャット）は「猫」を表す英単語です。'
     },
     {
-      id: "j2_13", category: "ものの数え方", categoryName: "語彙文法",
-      question: "えんぴつを 数える ときに つかう 言葉は どれですか。",
-      options: ["1本（いっぽん）", "1まい（いちまい）", "1さつ（いっさつ）", "1ひき（いっぴき）"], correctIndex: 0,
-      explanation: "えんぴつのような ほそ長い ものは「本（ほん）」で 数えます。"
+      id: 'en_16',
+      category: '動物',
+      question: '「うさぎ」を表す英単語はどれ？',
+      choices: ['rabbit', 'monkey', 'tiger', 'horse'],
+      answer: 'rabbit',
+      explanation: 'rabbit（ラビット）は耳の長い「うさぎ」です。'
     },
     {
-      id: "j2_14", category: "ことばのきまり", categoryName: "語彙文法",
-      question: "（　）に はいる つなぎの 言葉は どれですか。\n「雨が ふりそうだ。（　）、かさを もって いこう。」",
-      options: ["だから", "しかし", "ところが", "たとえば"], correctIndex: 0,
-      explanation: "りゆうを うけて つづける ときは「だから」を つかいます。"
+      id: 'en_17',
+      category: '動物',
+      question: '空を飛ぶ「鳥（とり）」を表す英単語はどれ？',
+      choices: ['bird', 'fish', 'frog', 'duck'],
+      answer: 'bird',
+      explanation: 'bird（バード）は「鳥」、fish（フィッシュ）は「魚」です。'
+    },
+
+    // --- 食べ物・飲み物 ---
+    {
+      id: 'en_18',
+      category: '食べ物',
+      question: '「りんご」を表す英単語はどれ？',
+      choices: ['apple', 'banana', 'orange', 'grape'],
+      answer: 'apple',
+      explanation: 'apple（アップル）は「りんご」です。'
     },
     {
-      id: "j2_15", category: "漢字のかき", categoryName: "国語漢字",
-      question: "「おともだち」の「とも」の かんじは どれですか。",
-      options: ["友", "右", "左", "有"], correctIndex: 0,
-      explanation: "「友達」の「友（とも）」が 正しい かんじです。"
+      id: 'en_19',
+      category: '食べ物',
+      question: '「水（みず）」を表す英単語はどれ？',
+      choices: ['water', 'milk', 'juice', 'tea'],
+      answer: 'water',
+      explanation: 'water（ウォーター）は「水」、milk（ミルク）は「牛乳」です。'
     },
     {
-      id: "j2_16", category: "慣用句", categoryName: "語彙文法",
-      question: "とても おどろいた ときの ようすを あらわす 言葉「目を ◯くする」の ◯に はいるのは どれですか。",
-      options: ["丸", "三角", "四角", "細"], correctIndex: 0,
-      explanation: "おどろいて 目を 大きく ひらく ようすを「目を 丸くする」と いいます。"
+      id: 'en_20',
+      category: '食べ物',
+      question: '「たまご」を表す英単語はどれ？',
+      choices: ['egg', 'bread', 'rice', 'meat'],
+      answer: 'egg',
+      explanation: 'egg（エッグ）は「たまご」、bread（ブレッド）は「パン」です。'
+    },
+
+    // --- 身の回り・日常フレーズ ---
+    {
+      id: 'en_21',
+      category: '身の回り',
+      question: '「本（ほん）」を表す英単語はどれ？',
+      choices: ['book', 'pen', 'desk', 'bag'],
+      answer: 'book',
+      explanation: 'book（ブック）は「本」、desk（デスク）は「机」です。'
+    },
+    {
+      id: 'en_22',
+      category: '身の回り',
+      question: '「学校（がっこう）」を表す英単語はどれ？',
+      choices: ['school', 'park', 'station', 'library'],
+      answer: 'school',
+      explanation: 'school（スクール）は「学校」、park（パーク）は「公園」です。'
+    },
+    {
+      id: 'en_23',
+      category: '日常フレーズ',
+      question: '「私はりんごが好きです」を英語で言うとどれ？',
+      choices: ['I like apples.', 'I have a pen.', 'I am happy.', 'I go to school.'],
+      answer: 'I like apples.',
+      explanation: 'I like ～（アイ ライク ～）で「私は～が好きです」という意味になります。'
+    },
+    {
+      id: 'en_24',
+      category: '日常フレーズ',
+      question: '相手に「元気ですか？」とたずねる英語はどれ？',
+      choices: ['How are you?', 'Who are you?', 'Where are you?', 'What is this?'],
+      answer: 'How are you?',
+      explanation: 'How are you?（ハウ アー ユー？）は「元気ですか？」という定番の質問です。'
+    },
+    {
+      id: 'en_25',
+      category: '日常フレーズ',
+      question: '「これは何ですか？」とたずねる英語はどれ？',
+      choices: ['What is this?', 'How old are you?', 'What time is it?', 'Can you swim?'],
+      answer: 'What is this?',
+      explanation: 'What is this?（ワット イズ ディス？）で「これは何ですか？」と聞けます。'
     }
   ];
 
-  static JAPANESE_G5 = [
+  // =========================================================================
+  // 2. 国語問題（小学2年生向け）
+  // =========================================================================
+  static GRADE2_JAPANESE = [
     {
-      id: "j_1", category: "漢字の読み", categoryName: "国語漢字",
-      question: "次の文の「知識」の正しい読み方はどれですか。\n「本を読んで新しい知識を得る。」",
-      options: ["ちしき", "ちしん", "ちせい", "ちりょく"], correctIndex: 0,
-      explanation: "「知識」は「ちしき」と読みます。"
+      id: 'jp2_01',
+      category: '漢字の読み',
+      question: '「毎日、元気に学校へ行く。」の「元気」の読み方はどれ？',
+      choices: ['げんき', 'てんき', 'でんき', 'ほんき'],
+      answer: 'げんき',
+      explanation: '「元気」は「げんき」と読みます。'
     },
     {
-      id: "j_2", category: "対義語", categoryName: "語彙文法",
-      question: "「複雑（ふくざつ）」の対義語（反対の意味の言葉）として、最も適切なものはどれですか。",
-      options: ["単純", "簡単", "容易", "明快"], correctIndex: 0,
-      explanation: "「複雑」の対義語は「単純」です。"
+      id: 'jp2_02',
+      category: '反対の言葉',
+      question: '「大きい」の反対（はんたい）の意味の言葉はどれ？',
+      choices: ['小さい', '長い', '高い', '広い'],
+      answer: '小さい',
+      explanation: '「大きい」の反対は「小さい（ちいさい）」です。'
     },
     {
-      id: "j_3", category: "慣用句", categoryName: "語彙文法",
-      question: "非常に驚いてあきれる様子を表す慣用句「開いた◯がふさがらない」の◯に入る言葉はどれですか。",
-      options: ["口", "目", "耳", "手"], correctIndex: 0,
-      explanation: "正解は「口」で、「開いた口がふさがらない」となります。"
+      id: 'jp2_03',
+      category: '反対の言葉',
+      question: '「新しい」の反対（はんたい）の意味の言葉はどれ？',
+      choices: ['古い', '若い', '早い', '近い'],
+      answer: '古い',
+      explanation: '「新しい（あたらしい）」の反対は「古い（ふるい）」です。'
     },
     {
-      id: "j_4", category: "部首", categoryName: "国語漢字",
-      question: "漢字の「泳」「海」「池」に共通する部首（へん）の名前は何ですか。",
-      options: ["さんずい", "きへん", "にんべん", "うかんむり"], correctIndex: 0,
-      explanation: "水に関係する漢字に共通する部首は「さんずい（氵）」です。"
+      id: 'jp2_04',
+      category: '文のきまり',
+      question: '「白い うさぎが ぴょんと はねた。」で、「なにが」にあたる言葉はどれ？',
+      choices: ['うさぎが', '白い', 'ぴょんと', 'はねた'],
+      answer: 'うさぎが',
+      explanation: '文の主人公（主語）は「うさぎが」です。'
     },
     {
-      id: "j_5", category: "主語と述語", categoryName: "語彙文法",
-      question: "次の文の「主語」にあたる部分はどれですか。\n「昨日、大きな黒い犬が公園で元気に走っていた。」",
-      options: ["大きな黒い犬が", "昨日", "公園で", "元気に走っていた"], correctIndex: 0,
-      explanation: "「何が（誰が）」にあたる部分は「大きな黒い犬が」です。"
+      id: 'jp2_05',
+      category: '言葉の意味',
+      question: '「朝ごはんを 食べる」の「朝」の反対の言葉はどれ？',
+      choices: ['夜', '昼', '夕方', '今日'],
+      answer: '夜',
+      explanation: '「朝（あさ）」の反対は「夜（よる）」です。'
     },
     {
-      id: "j_6", category: "接続詞", categoryName: "語彙文法",
-      question: "文中の（　）に入る最も適切な接続詞はどれですか。\n「今日は朝から強い雨が降っていた。（　）、サッカーの試合は予定通り行われた。」",
-      options: ["しかし", "だから", "つまり", "また"], correctIndex: 0,
-      explanation: "前後の文が逆の内容（雨だが実施した）をつなぐため「しかし（逆接）」が入ります。"
+      id: 'jp2_06',
+      category: '漢字の読み',
+      question: '「空に 白い 雲が うかんでいる。」の「雲」の読み方はどれ？',
+      choices: ['くも', 'ゆき', 'あめ', 'かぜ'],
+      answer: 'くも',
+      explanation: '「雲」は「くも」と読みます。'
     },
     {
-      id: "j_7", category: "指示語", categoryName: "読解力",
-      question: "次の文の指示語「これ」が指している内容として最も適切なものはどれですか。\n「たけし君は毎日コツコツと漢字の練習を続けた。これがテストでの満点につながった。」",
-      options: ["毎日コツコツと漢字の練習を続けたこと", "テストで満点を取ったこと", "漢字の練習問題集のこと", "たけし君のこと"], correctIndex: 0,
-      explanation: "指示語「これ」は直前の動作「毎日コツコツと漢字の練習を続けたこと」を指しています。"
+      id: 'jp2_07',
+      category: 'つながる言葉',
+      question: '（ ）に入る言葉はどれ？「雨が ふってきた。（ ）、かさを さした。」',
+      choices: ['だから', 'しかし', 'けれど', 'なぜなら'],
+      answer: 'だから',
+      explanation: '前の文が理由になっているときは「だから」をつなげます。'
     },
     {
-      id: "j_8", category: "ことわざ", categoryName: "語彙文法",
-      question: "「失敗は成功の母（はは）」ということわざの意味として最も適切なものはどれですか。",
-      options: [
-        "失敗しても反省して原因を改善すれば次の成功につながるということ",
-        "お母さんは何でも成功させてくれるということ",
-        "一度失敗したら二度と成功できないということ",
-        "失敗しないように何もしないのが一番であるということ"
-      ],
-      correctIndex: 0,
-      explanation: "失敗の原因を振り返って工夫することが成功の源になるという意味です。"
+      id: 'jp2_08',
+      category: 'ものの数え方',
+      question: 'えんぴつを数えるときに使う言葉はどれ？',
+      choices: ['1本（いっぽん）', '1枚（いちまい）', '1匹（いっぴき）', '1冊（いっさつ）'],
+      answer: '1本（いっぽん）',
+      explanation: '細長いものは「1本、2本…」と数えます。'
     },
     {
-      id: "j_9", category: "四字熟語", categoryName: "語彙文法",
-      question: "「一生懸命（いっしょうけんめい）」の語源であり、命がけで物事に取り組む様子を表す元の言葉（四字熟語）はどれですか。",
-      options: ["一所懸命", "一期一会", "自業自得", "試行錯誤"], correctIndex: 0,
-      explanation: "「一所懸命（いっしょけんめい）」は武士が1つの領地を命がけで守ったことに由来します。"
+      id: 'jp2_09',
+      category: 'ものの数え方',
+      question: '本やノートを数えるときに使う言葉はどれ？',
+      choices: ['1冊（いっさつ）', '1枚（いちまい）', '1台（いちだい）', '1杯（いっぱい）'],
+      answer: '1冊（いっさつ）',
+      explanation: 'ページがとじてある本やノートは「1冊、2冊…」と数えます。'
     },
     {
-      id: "j_10", category: "心情理解", categoryName: "読解力",
-      question: "次の文章を読んで、下線部のときの「僕」の心情として最も適切なものはどれですか。\n「ライバルの健太が自分より高い点数を取ったのを知ったとき、僕は何も言わずに思わず拳を強く握りしめた。」",
-      options: [
-        "悔しくて次は絶対に負けたくないという強い気持ち",
-        "健太の努力を素直に称えて喜んでいる気持ち",
-        "テストが終わって心から安心している気持ち",
-        "悲しくて何も考えられない気持ち"
-      ],
-      correctIndex: 0,
-      explanation: "「何も言わずに思わず拳を強く握りしめた」描写から、悔しさと次への強い闘志が読み取れます。"
-    },
-    {
-      id: "j_11", category: "漢字の読み", categoryName: "国語漢字",
-      question: "「状況を正確に把握する」の「把握」の正しい読み方はどれですか。",
-      options: ["はあく", "はやく", "ばあく", "はこく"], correctIndex: 0,
-      explanation: "「把握」は「はあく」と読み、しっかりつかむという意味です。"
-    },
-    {
-      id: "j_12", category: "対義語", categoryName: "語彙文法",
-      question: "「具体的（ぐたいてき）」の対義語として最も適切なものはどれですか。",
-      options: ["抽象的", "一般的", "客観的", "消極的"], correctIndex: 0,
-      explanation: "「具体的」の対義語は「抽象的（ちゅうしょうてき）」です。"
-    },
-    {
-      id: "j_13", category: "類義語", categoryName: "語彙文法",
-      question: "「推測（すいそく）」と最も意味が近い言葉（類義語）はどれですか。",
-      options: ["推察", "観測", "計測", "予測"], correctIndex: 0,
-      explanation: "ある根拠をもとに推し量ることを「推測」「推察」といいます。"
-    },
-    {
-      id: "j_14", category: "四字熟語", categoryName: "語彙文法",
-      question: "「十人◯色（じゅうにんといろ）」の◯に入る漢字はどれですか。人それぞれ考えや好みが違うという意味です。",
-      options: ["十", "百", "千", "万"], correctIndex: 0,
-      explanation: "正解は「十人十色（じゅうにんといろ）」です。"
-    },
-    {
-      id: "j_15", category: "接続詞", categoryName: "語彙文法",
-      question: "文中の（　）に入る最も適切な接続詞はどれですか。\n「地球温暖化が進んでいる。（　）、北極の氷が年々溶け続けているのだ。」",
-      options: ["つまり", "しかし", "それでも", "ところが"], correctIndex: 0,
-      explanation: "前の文の内容を言い換えてまとめる「つまり」が最も適切です。"
-    },
-    {
-      id: "j_16", category: "要旨把握", categoryName: "読解力",
-      question: "次の文章で、筆者が最も伝えたいこと（要旨）はどれですか。\n「失敗を恐れて何もしなければ傷つくことはない。しかし、それでは成長も得られない。小さな挑戦を積み重ねることこそが未来を開く鍵なのだ。」",
-      options: [
-        "失敗を恐れず小さな挑戦を続けることが成長につながる",
-        "傷つかないように慎重に行動することが最も大切である",
-        "未来を開くためには一度も失敗しない計画が必要である",
-        "大きな成功を収める人は最初から失敗をしない"
-      ],
-      correctIndex: 0,
-      explanation: "筆者は「小さな挑戦を積み重ねることこそが未来を開く鍵」と結論づけています。"
+      id: 'jp2_10',
+      category: '読解・気持ち',
+      question: '「けんた君は テストで 100点を とって、とびあがって よろこんだ。」どんな気持ちですか？',
+      choices: ['とても うれしい気持ち', 'くやしくて かなしい気持ち', 'びっくりして こわい気持ち', 'ねむくて つかれた気持ち'],
+      answer: 'とても うれしい気持ち',
+      explanation: '「とびあがって よろこんだ」という行動から、とてもうれしい気持ちがわかります。'
     }
   ];
 
-  static UYGHUR = [
+  // =========================================================================
+  // 3. 国語問題（小学5年生向け）
+  // =========================================================================
+  static GRADE5_JAPANESE = [
     {
-      id: "u_1", category: "単語・意味", categoryName: "ウイグル語",
-      question: "ウイグル語の「بانان (Banan)」の日本語の意味はどれですか。",
-      options: ["りんご", "みかん", "ぶどう", "バナナ"], correctIndex: 3,
-      explanation: "「بانان (Banan)」はウイグル語で「バナナ」を意味します。"
+      id: 'jp5_01',
+      category: '対義語・類義語',
+      question: '「複雑（ふくざつ）」の対義語として最も適切なものはどれ？',
+      choices: ['単純', '簡単', '容易', '明快'],
+      answer: '単純',
+      explanation: '「複雑」の対義語は「単純（たんじゅん）」です（「簡単」の対義語は「困難」）。'
     },
     {
-      id: "u_2", category: "日常の挨拶", categoryName: "ウイグル語",
-      question: "ウイグル語の丁寧な挨拶「こんにちは」にあたる言葉はどれですか。",
-      options: ["ئەسسالامۇ ئەلەيكۇم (Assalamu alaykum)", "خەيرىخوش (Khayrikhosh)", "رەھمەت (Rahmat)", "كەچۈرۈڭ (Kechuerung)"], correctIndex: 0,
-      explanation: "「ئەسسالامۇ ئەلەيكۇم (Assalamu alaykum)」は出会った時の最も丁寧で一般的な挨拶です。"
+      id: 'jp5_02',
+      category: '慣用句',
+      question: '非常に驚いてあきれる様子を表す慣用句「開いた（ ）がふさがらない」の空欄はどれ？',
+      choices: ['口', '目', '耳', '手'],
+      answer: '口',
+      explanation: 'あまりの驚きに口を開けたまま閉じられない様子から「開いた口がふさがらない」と言います。'
     },
     {
-      id: "u_3", category: "数・数字", categoryName: "ウイグル語",
-      question: "ウイグル語で数字の「5」を表す言葉（Besh）はどれですか。",
-      options: ["بەش (Besh)", "بىر (Bir)", "ئۈچ (Oech)", "ئون (On)"], correctIndex: 0,
-      explanation: "「بەش (Besh)」は数字の「5」を表します。"
+      id: 'jp5_03',
+      category: '四字熟語',
+      question: '「原因と結果がぴったり一致すること、よい行いをすればよい報いがあること」を表す四字熟語はどれ？',
+      choices: ['因果応報', '一石二鳥', '以心伝心', '十人十色'],
+      answer: '因果応報',
+      explanation: '「因果応報（いんがおうほう）」は、原因に応じた結果が返ってくることを表します。'
     },
     {
-      id: "u_4", category: "家族・人名", categoryName: "ウイグル語",
-      question: "ウイグル語で「お母さん」を表す言葉（Ana）はどれですか。",
-      options: ["ئانا (Ana)", "ئاتا (Ata)", "ئاكا (Aka)", "سىڭىل (Singil)"], correctIndex: 0,
-      explanation: "「ئانا (Ana)」は「お母さん」を意味します。"
+      id: 'jp5_04',
+      category: '接続語',
+      question: '（ ）に入る最も適切な接続詞はどれ？「今日は朝から強い雨が降っていた。（ ）、試合は予定通り行われた。」',
+      choices: ['しかし', 'つまり', 'したがって', 'たとえば'],
+      answer: 'しかし',
+      explanation: '雨という悪条件にもかかわらず実施されたという逆接の関係なので「しかし」が入ります。'
     },
     {
-      id: "u_5", category: "動物・自然", categoryName: "ウイグル語",
-      question: "ウイグル語の「ئات (At)」の日本語の意味はどれですか。",
-      options: ["馬", "犬", "猫", "鳥"], correctIndex: 0,
-      explanation: "「ئات (At)」は「馬」を意味します。"
+      id: 'jp5_05',
+      category: 'ことわざ',
+      question: '「失敗しても反省して原因を改めれば、かえって次の成功につながる」という意味のことわざはどれ？',
+      choices: ['失敗は成功の母', '猿も木から落ちる', '急がば回れ', '石の上にも三年'],
+      answer: '失敗は成功の母',
+      explanation: '「失敗は成功の母」は、失敗から学ぶことで成功が生まれるという教えです。'
     },
     {
-      id: "u_6", category: "感謝・マナー", categoryName: "ウイグル語",
-      question: "ウイグル語で「ありがとう」を意味する言葉（Rahmat）はどれですか。",
-      options: ["رەھمەت (Rahmat)", "ياخشىمۇسىز (Yakhshimusiz)", "مۇبارەك (Mubarak)", "قارشى ئالىمىز (Qarshi alimiz)"], correctIndex: 0,
-      explanation: "「رەھمەت (Rahmat)」は「感謝・ありがとう」を表す言葉です。"
+      id: 'jp5_06',
+      category: '文法・主語述語',
+      question: '「昨日、公園のベンチで本を読んでいた妹が急に笑い出した。」の主語はどれ？',
+      choices: ['妹が', '昨日', '本を', '公園のベンチで'],
+      answer: '妹が',
+      explanation: '「だれが・なにが」にあたる「妹が」が、「笑い出した（述語）」に対応する主語です。'
     },
     {
-      id: "u_7", category: "色・形容詞", categoryName: "ウイグル語",
-      question: "ウイグル語で「青・空色」を表す言葉（Koek）はどれですか。",
-      options: ["كۆك (Koek)", "قىزىل (Qizil)", "سېرىق (Sering)", "قارا (Qara)"], correctIndex: 0,
-      explanation: "「كۆك (Koek)」は「青・空色」を意味します。"
+      id: 'jp5_07',
+      category: '敬語',
+      question: '「先生がおっしゃった」の「おっしゃった」は何という敬語の種類ですか？',
+      choices: ['尊敬語', '謙譲語', '丁寧語', '美化語'],
+      answer: '尊敬語',
+      explanation: '相手（先生）の動作を高めて敬意を表す「おっしゃる」は尊敬語です。'
     },
     {
-      id: "u_8", category: "文・自己紹介", categoryName: "ウイグル語",
-      question: "ウイグル語の文「مەن ئوقۇغۇچى (Men oqughuchi)」の意味はどれですか。",
-      options: ["私は学生（生徒）です", "私は先生です", "私は医者です", "私は友達です"], correctIndex: 0,
-      explanation: "「مەن (私) ئوقۇغۇچى (学生/生徒)」で「私は学生です」という意味になります。"
+      id: 'jp5_08',
+      category: '指示語',
+      question: '「彼は毎日欠かさず素振りを続けた。それが全国大会優勝につながった。」の「それ」が指す内容はどれ？',
+      choices: ['毎日欠かさず素振りを続けたこと', '全国大会で優勝したこと', '毎日練習を見学したこと', '新しい道具を買ったこと'],
+      answer: '毎日欠かさず素振りを続けたこと',
+      explanation: '指示語「それ」は直前の文の内容全体を指しています。'
     },
     {
-      id: "u_9", category: "学校・学習", categoryName: "ウイグル語",
-      question: "ウイグル語で「本」を表す言葉（Kitab）はどれですか。",
-      options: ["كىتاب (Kitab)", "قەلەم (Qelem)", "مەكتەپ (Meptep)", "ئۈستەل (Uestel)"], correctIndex: 0,
-      explanation: "「كىتاب (Kitab)」は「本」を意味します。"
+      id: 'jp5_09',
+      category: '漢字の知識',
+      question: '「泳」「海」「池」の3つの漢字に共通する部首の名前はどれ？',
+      choices: ['さんずい', 'にすい', 'きへん', 'てへん'],
+      answer: 'さんずい',
+      explanation: '水に関係する漢字につく左側の部首は「さんずい」です。'
     },
     {
-      id: "u_10", category: "挨拶・フレーズ", categoryName: "ウイグル語",
-      question: "「خەيرلىك كۈن (Khayrlik kuen)」の日本語の意味として正しいものはどれですか。",
-      options: ["良い一日を（こんにちは）", "おやすみなさい", "さようなら", "いただきます"], correctIndex: 0,
-      explanation: "「خەيرلىك كۈن (Khayrlik kuen)」は「良い一日を / 日中の挨拶」を意味します。"
-    },
-    {
-      id: "u_11", category: "家族・人名", categoryName: "ウイグル語",
-      question: "ウイグル語で「お父さん」を表す言葉（Ata）はどれですか。",
-      options: ["ئاتا (Ata)", "ئانا (Ana)", "ئاچا (Acha)", "ئىنى (Ini)"], correctIndex: 0,
-      explanation: "「ئاتا (Ata)」は「お父さん」を意味します。"
-    },
-    {
-      id: "u_12", category: "食べ物・飲み物", categoryName: "ウイグル語",
-      question: "ウイグル語で「水」を表す言葉（Su）はどれですか。",
-      options: ["سۇ (Su)", "چاي (Chay)", "نان (Nan)", "سۈت (Suet)"], correctIndex: 0,
-      explanation: "「سۇ (Su)」は「水」を意味します。"
+      id: 'jp5_10',
+      category: '文章読解・要旨',
+      question: '「読書は知識を増やすだけでなく、他人の心を想像し思いやりを育む。だからこそ子どもの頃から本に親しむべきだ。」筆者の主張はどれ？',
+      choices: ['思いやりを育む読書に子どもの頃から親しむことが大切だ', '知識を増やすために難しい本だけを読むべきだ', '大人になってから読書を始めれば十分である', '本を読むよりも外で遊ぶほうが大切である'],
+      answer: '思いやりを育む読書に子どもの頃から親しむことが大切だ',
+      explanation: '「だからこそ〜べきだ」の後ろに筆者が最も伝えたい主張（要旨）が書かれています。'
     }
   ];
+
+  // =========================================================================
+  // 4. 算数予備問題（MathGeneratorの補助用）
+  // =========================================================================
+  static GRADE2_MATH_FALLBACK = [
+    {
+      id: 'm2_fb_01',
+      category: '時計・時間',
+      question: '午後2時30分の40分後は、午後何時何分ですか？',
+      choices: ['午後3時10分', '午後3時00分', '午後2時70分', '午後3時20分'],
+      answer: '午後3時10分',
+      explanation: '2時30分から30分たつと3時00分、さらに10分たって午後3時10分になります。'
+    },
+    {
+      id: 'm2_fb_02',
+      category: '長さ・単位',
+      question: '2m 35cm は、全部で何cmですか？',
+      choices: ['235cm', '2035cm', '55cm', '2350cm'],
+      answer: '235cm',
+      explanation: '1m ＝ 100cm なので、2m ＝ 200cm。200 ＋ 35 ＝ 235cm です。'
+    }
+  ];
+
+  static GRADE5_MATH_FALLBACK = [
+    {
+      id: 'm5_fb_01',
+      category: 'つるかめ算・思考力',
+      question: 'ツルとカメが合わせて10匹います。足の数の合計が28本のとき、カメは何匹いますか？',
+      choices: ['4匹', '6匹', '5匹', '3匹'],
+      answer: '4匹',
+      explanation: '全部ツルだと足は2×10＝20本。差の8本を足の差（4−2＝2本）で割ると8÷2＝4匹がカメです。'
+    },
+    {
+      id: 'm5_fb_02',
+      category: '植木算・思考力',
+      question: '長さ60mのまっすぐな道の片側に、端から端まで5mおきに木を植えます。木は全部で何本必要ですか？',
+      choices: ['13本', '12本', '11本', '14本'],
+      answer: '13本',
+      explanation: '間の数は 60÷5＝12か所。両端に植えるので 12＋1＝13本 必要です。'
+    }
+  ];
+
+  // =========================================================================
+  // 5. 互換用アクセサメソッド（どの呼び出し方でも動作するよう定義）
+  // =========================================================================
+  static getEnglishQuestions() {
+    return this.ENGLISH_QUESTIONS;
+  }
+
+  static getJapaneseQuestions(grade) {
+    return String(grade) === '5' ? this.GRADE5_JAPANESE : this.GRADE2_JAPANESE;
+  }
+
+  static getMathFallbackQuestions(grade) {
+    return String(grade) === '5' ? this.GRADE5_MATH_FALLBACK : this.GRADE2_MATH_FALLBACK;
+  }
 }
+
+export default QuestionBank;
