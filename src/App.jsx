@@ -8,6 +8,7 @@ import { HomeView, QuizRunnerView, ResultsView, HistoryView, AdminView } from '.
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [customDisplayName, setCustomDisplayName] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -61,14 +62,16 @@ export default function App() {
 
   const currentUserDisplayName = useMemo(() => {
     if (!user) return '';
+    if (customDisplayName && customDisplayName.trim()) return customDisplayName.trim();
     if (user.displayName && user.displayName.trim()) return user.displayName.trim();
     if (user.email) return user.email.split('@')[0];
     return '学習メンバー';
-  }, [user]);
+  }, [user, customDisplayName]);
 
   useEffect(() => {
     const unsubscribe = firebaseService.subscribeAuth((currentUser) => {
       setUser(currentUser);
+      setCustomDisplayName(currentUser?.displayName || '');
       setAuthLoading(false);
     });
     return () => unsubscribe();
@@ -221,7 +224,8 @@ export default function App() {
           return;
         }
         const registeredUser = await firebaseService.registerWithEmail(emailInput, passwordInput, childNameInput);
-        setUser({ ...registeredUser, displayName: childNameInput.trim() });
+        setUser(registeredUser);
+        setCustomDisplayName(childNameInput.trim());
       } else {
         await firebaseService.loginWithEmail(emailInput, passwordInput);
       }
@@ -246,7 +250,7 @@ export default function App() {
     if (!user) return;
     try {
       await firebaseService.updateUserDisplayName(user, newName);
-      setUser({ ...user, displayName: newName });
+      setCustomDisplayName(newName.trim());
     } catch (err) {
       console.error("Failed to update display name:", err);
     } finally {
@@ -477,7 +481,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
         <div className="w-12 h-12 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black text-xl mb-4 animate-bounce">
-          四
+          {AppConfig.APP_BADGE_CHAR}
         </div>
         <p className="text-sm font-bold text-slate-300">認証状態を確認しています...</p>
       </div>
@@ -606,7 +610,7 @@ export default function App() {
 
       <footer className="bg-slate-900 text-slate-400 text-xs py-6 border-t border-slate-800 text-center">
         <div className="max-w-6xl mx-auto px-4">
-          四谷大塚 入塾テスト実戦対策・学習実績保存システム (独立ファイル分割・モジュール版)
+          {AppConfig.APP_TITLE}・家族学習システム (独立ファイル分割・モジュール版)
         </div>
       </footer>
     </div>
