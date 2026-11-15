@@ -1,5 +1,5 @@
 // src/data/QuestionEngine.js
-// 1日1回自動生成＆全ユーザー同一出題（Firestore日替わり共有＋管理画面手動再生成対応エンジン）
+// 1日1回自動生成＆全ユーザー同一出題（選択肢シャッフル固定＋管理画面手動再生成対応エンジン）
 
 import {
   doc,
@@ -20,7 +20,6 @@ const FIRESTORE_DAILY_COLLECTION = 'daily_ai_quizzes';
 
 export class QuestionEngine {
   static firestoreDb = null;
-  // 同時アクセスによる二重API呼び出し防止用ロック
   static inFlightRequests = new Map();
 
   /**
@@ -53,7 +52,7 @@ export class QuestionEngine {
   }
 
   /**
-   * 日付文字列から決定論的シード値を生成（全ユーザー同一結果用）
+   * 文字列から決定論的シード値を生成（全ユーザー同一結果用）
    */
   static hashStringToSeed(str) {
     let hash = 2166136261;
@@ -99,13 +98,46 @@ export class QuestionEngine {
   }
 
   /**
-   * 問題データの形式を統一（並び順・選択肢順は変更せず全ユーザー同一を保証）
+   * 未シャッフル状態（1番目ばかりが正解）になっていないか判定する
    */
-  static normalizeQuestions(questions, subject, count = 10, preserveOrder = true) {
+  static hasUnshuffledFirstChoiceBias(questions) {
+    if (!Array.isArray(questions) || questions.length < 3) return false;
+    const firstMatchCount = questions.filter(
+      (q) => Array.isArray(q?.choices) && q.choices.length > 1 && q.choices[0] === q.answer
+    ).length;
+    return firstMatchCount >= Math.ceil(questions.length * 0.7);
+  }
+
+  /**
+   * 問題データの形式を統一し、選択肢をシード固定でシャッフルする
+   * - preserveOrder=true かつ choiceSeedPrefix 指定時：全ユーザー共通のランダム順でA〜Dに分散
+   * - preserveOrder=true かつ choiceSeedPrefix 空文字時：保存済みの選択肢順をそのまま維持
+   * - preserveOrder=false 時（弱点復習など）：問題順・選択肢順ともにランダムシャッフル
+   */
+  static normalizeQuestions(
+    questions,
+    subject,
+    count = 10,
+    preserveOrder = true,
+    choiceSeedPrefix = ''
+  ) {
     const baseList = preserveOrder ? [...questions] : this.shuffle(questions);
     const selected = baseList.slice(0, count);
-    return selected.map((q, index) => {
+
+    const normalized = selected.map((q, index) => {
       const hasAudio = Boolean(q.audioText && String(q.audioText).trim());
+      const rawChoices = Array.isArray(q.choices) ? [...q.choices] : [];
+
+      let finalChoices = rawChoices;
+      if (!preserveOrder) {
+        finalChoices = this.shuffle(rawChoices);
+      } else if (choiceSeedPrefix) {
+        finalChoices = this.deterministicShuffle(
+          rawChoices,
+          `${choiceSeedPrefix}_choice_${index}_${q.question || ''}`
+        );
+      }
+
       return {
         id: q.id || `${subject}_q_${index + 1}`,
         subject,
@@ -113,11 +145,22 @@ export class QuestionEngine {
         audioText: q.audioText || '',
         category: q.category || '思考トレーニング',
         question: q.question,
-        choices: preserveOrder ? [...(q.choices || [])] : this.shuffle(q.choices || []),
+        choices: finalChoices,
         answer: q.answer,
         explanation: q.explanation || '正解を確認して次に進みましょう！'
       };
     });
+
+    // 保存済みデータ等で1番目（A）に正解が偏っている場合は自動再分散
+    if (this.hasUnshuffledFirstChoiceBias(normalized)) {
+      const fixSeed = choiceSeedPrefix || `${this.getTodayJstString()}_${subject}_fix`;
+      return normalized.map((q, idx) => ({
+        ...q,
+        choices: this.deterministicShuffle(q.choices, `${fixSeed}_q_${idx}_${q.question || ''}`)
+      }));
+    }
+
+    return normalized;
   }
 
   /**
@@ -159,14 +202,16 @@ export class QuestionEngine {
     const dailyKey = this.getDailySetKey(grade, subject, dateStr);
     const normalizedSubject =
       subject === 'english' || subject === 'english_listening' ? 'english' : subject;
-    const fixedQuestions = this.normalizeQuestions(questions, normalizedSubject, 10, true);
+
+    // すでにシャッフル済みの順序を維持（未シャッフルなら dailyKey で自動分散）
+    const fixedQuestions = this.normalizeQuestions(questions, normalizedSubject, 10, true, '');
 
     const payload = {
       date: dateStr,
       dailyKey,
       grade: String(grade || '2'),
       subject,
-      source, // 'auto_daily'（その日最初の自動生成） | 'admin_manual'（管理画面からの再作成）
+      source,
       updatedAt: new Date().toISOString(),
       questions: fixedQuestions
     };
@@ -196,7 +241,6 @@ export class QuestionEngine {
   static async getTodayDailySetsMap(dateStr = this.getTodayJstString()) {
     const resultMap = {};
 
-    // 1. ローカルから本日分を収集
     if (typeof localStorage !== 'undefined') {
       try {
         for (let i = 0; i < localStorage.length; i++) {
@@ -216,7 +260,6 @@ export class QuestionEngine {
       }
     }
 
-    // 2. Firestore から最新を取得して同期
     if (this.firestoreDb) {
       try {
         const colRef = collection(this.firestoreDb, FIRESTORE_DAILY_COLLECTION);
@@ -251,7 +294,7 @@ export class QuestionEngine {
   }
 
   /**
-   * 内蔵問題エンジンから「本日の固定10問」を生成（API未設定時でも全ユーザー同一出題を保証）
+   * 内蔵問題エンジンから「本日の固定10問（選択肢もシード固定シャッフル済み）」を生成
    */
   static buildDeterministicFallbackQuiz(grade, subject, dateStr) {
     const seedKey = `${dateStr}_${subject}_${grade}`;
@@ -264,7 +307,7 @@ export class QuestionEngine {
       const listeningPool = pool.filter((q) => q.type === 'listening' || Boolean(q.audioText));
       const target = listeningPool.length > 0 ? listeningPool : pool;
       const picked = this.deterministicShuffle(target, seedKey).slice(0, 10);
-      return this.normalizeQuestions(picked, 'english', 10, true);
+      return this.normalizeQuestions(picked, 'english', 10, true, seedKey);
     }
 
     if (subject === 'english') {
@@ -278,10 +321,10 @@ export class QuestionEngine {
       if (listeningPool.length > 0 && standardPool.length > 0) {
         const pickedStd = this.deterministicShuffle(standardPool, `${seedKey}_std`).slice(0, 7);
         const pickedLis = this.deterministicShuffle(listeningPool, `${seedKey}_lis`).slice(0, 3);
-        return this.normalizeQuestions([...pickedStd, ...pickedLis], 'english', 10, true);
+        return this.normalizeQuestions([...pickedStd, ...pickedLis], 'english', 10, true, seedKey);
       }
       const picked = this.deterministicShuffle(pool, seedKey).slice(0, 10);
-      return this.normalizeQuestions(picked, 'english', 10, true);
+      return this.normalizeQuestions(picked, 'english', 10, true, seedKey);
     }
 
     if (subject === 'japanese') {
@@ -292,7 +335,7 @@ export class QuestionEngine {
           ? QuestionBank.GRADE5_JAPANESE
           : QuestionBank.GRADE2_JAPANESE) || [];
       const picked = this.deterministicShuffle(pool, seedKey).slice(0, 10);
-      return this.normalizeQuestions(picked, 'japanese', 10, true);
+      return this.normalizeQuestions(picked, 'japanese', 10, true, seedKey);
     }
 
     if (subject === 'math') {
@@ -314,7 +357,7 @@ export class QuestionEngine {
           ? QuestionBank.GRADE5_MATH_FALLBACK
           : QuestionBank.GRADE2_MATH_FALLBACK) || [];
       const combined = generated.length >= 10 ? generated : [...generated, ...fallback];
-      return this.normalizeQuestions(combined, 'math', 10, true);
+      return this.normalizeQuestions(combined, 'math', 10, true, seedKey);
     }
 
     // 総合（算数5問 ＋ 国語5問）
@@ -453,6 +496,7 @@ export class QuestionEngine {
 
     const prompt = `あなたは子どもの未来を生き抜く思考力と語学力を育てる教育トレーナーです。
 ${subjectInstruction}${topicConstraint}
+なお、正解の選択肢が毎回1番目にならないよう、4つの選択肢の配置位置（1〜4番目）を問題ごとにバランスよく分散させてください。
 
 必ず以下のJSON配列形式のみを出力してください（マークダウン記法や余分な説明文は不要です）：
 [
@@ -485,6 +529,7 @@ ${subjectInstruction}${topicConstraint}
 
     const triedModels = new Set();
     let lastError = null;
+    const choiceSeed = `${this.getDailySetKey(grade, subject)}_${customTopic || 'ai'}`;
 
     for (const model of initialCandidates) {
       triedModels.add(model);
@@ -492,7 +537,7 @@ ${subjectInstruction}${topicConstraint}
         const parsed = await this.requestGeminiWithModel(model, cleanKey, prompt);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const normalizedSubject = isEnglish ? 'english' : subject;
-          return this.normalizeQuestions(parsed, normalizedSubject, count, true);
+          return this.normalizeQuestions(parsed, normalizedSubject, count, true, choiceSeed);
         }
       } catch (err) {
         lastError = err;
@@ -510,7 +555,7 @@ ${subjectInstruction}${topicConstraint}
         const parsed = await this.requestGeminiWithModel(model, cleanKey, prompt);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const normalizedSubject = isEnglish ? 'english' : subject;
-          return this.normalizeQuestions(parsed, normalizedSubject, count, true);
+          return this.normalizeQuestions(parsed, normalizedSubject, count, true, choiceSeed);
         }
       } catch (err) {
         lastError = err;
@@ -528,7 +573,7 @@ ${subjectInstruction}${topicConstraint}
 
   /**
    * メインの出題エントリーポイント
-   * ルール：1日1回だけ作成して保存し、その日中は全ユーザーに全く同じ問題セットを出題する
+   * ルール：1日1回だけ作成して保存し、その日中は全ユーザーに全く同じ問題・選択肢順を出題する
    */
   static async generateQuiz(grade, subject, customApiKey = '') {
     const targetSubject = subject || 'math';
@@ -548,8 +593,9 @@ ${subjectInstruction}${topicConstraint}
         if (snap.exists()) {
           const data = snap.data();
           if (Array.isArray(data?.questions) && data.questions.length > 0) {
-            this.saveDailySetToLocal(dailyKey, data);
-            return this.normalizeQuestions(data.questions, normalizedSubject, 10, true);
+            const normalized = this.normalizeQuestions(data.questions, normalizedSubject, 10, true, '');
+            this.saveDailySetToLocal(dailyKey, { ...data, questions: normalized });
+            return normalized;
           }
         }
       } catch (err) {
@@ -560,7 +606,7 @@ ${subjectInstruction}${topicConstraint}
     // 2. ローカルキャッシュに本日分がある場合はそれを返す
     const localCached = this.getDailySetFromLocal(dailyKey);
     if (localCached && Array.isArray(localCached.questions) && localCached.questions.length > 0) {
-      return this.normalizeQuestions(localCached.questions, normalizedSubject, 10, true);
+      return this.normalizeQuestions(localCached.questions, normalizedSubject, 10, true, '');
     }
 
     // 3. 本日まだ作成されていない場合のみ、1日1回の新規作成を実行（同時実行ロック付き）
@@ -575,7 +621,6 @@ ${subjectInstruction}${topicConstraint}
           (typeof localStorage !== 'undefined' ? localStorage.getItem('gemini_api_key') : '') ||
           '';
 
-        // ローカルにキーがない場合は Firestore の共有設定から取得
         if (!apiKey && this.firestoreDb) {
           try {
             const keySnap = await getDoc(doc(this.firestoreDb, 'admin_settings', 'gemini_config'));
@@ -592,7 +637,6 @@ ${subjectInstruction}${topicConstraint}
 
         let createdQuestions = null;
 
-        // APIキーが設定されていれば1日1回だけ Gemini AI で問題を作成
         if (apiKey) {
           try {
             createdQuestions = await this.fetchQuestionsFromGemini(
@@ -606,7 +650,6 @@ ${subjectInstruction}${topicConstraint}
           }
         }
 
-        // APIキー未設定時・エラー時は日付シード固定の内蔵問題を作成
         if (!createdQuestions || createdQuestions.length === 0) {
           createdQuestions = this.buildDeterministicFallbackQuiz(
             targetGrade,
@@ -615,7 +658,6 @@ ${subjectInstruction}${topicConstraint}
           );
         }
 
-        // Firestore ＆ ローカルへ保存し、今日このあと開く全ユーザーに同じ問題を出題
         await this.saveDailyQuizSet(
           targetGrade,
           targetSubject,
@@ -624,7 +666,7 @@ ${subjectInstruction}${topicConstraint}
           today
         );
 
-        return this.normalizeQuestions(createdQuestions, normalizedSubject, 10, true);
+        return this.normalizeQuestions(createdQuestions, normalizedSubject, 10, true, '');
       } finally {
         this.inFlightRequests.delete(dailyKey);
       }
