@@ -224,14 +224,14 @@ export function AppHeader({
             className="flex items-center gap-2 cursor-pointer select-none min-w-0"
           >
             <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-400 to-amber-200 text-slate-950 flex items-center justify-center font-black text-sm shadow shrink-0">
-              四
+              {AppConfig.APP_ICON || '未'}
             </div>
             <div className="truncate">
               <h1 className="font-black text-sm sm:text-base leading-tight whitespace-nowrap">
-                四谷大塚 入塾テスト対策
+                {AppConfig.APP_TITLE || '未来を生き抜く 思考力トレーニング'}
               </h1>
               <p className="hidden lg:block text-[10px] text-amber-300 font-medium whitespace-nowrap">
-                毎日日替わり自動出題・タイマー＆弱点克服対応
+                {AppConfig.APP_SUBTITLE || '毎日1回の習慣で、自ら考え・伸び続ける頭を育てる'}
               </p>
             </div>
           </div>
