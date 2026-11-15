@@ -1,5 +1,5 @@
 // src/data/QuestionEngine.js
-// 1日1回自動生成＆全ユーザー同一出題（選択肢シャッフル固定＋管理画面手動再生成対応エンジン）
+// 1日1回自動生成＆全ユーザー同一出題（JSONモード自動フォールバック・選択肢シャッフル固定対応）
 
 import {
   doc,
@@ -110,9 +110,6 @@ export class QuestionEngine {
 
   /**
    * 問題データの形式を統一し、選択肢をシード固定でシャッフルする
-   * - preserveOrder=true かつ choiceSeedPrefix 指定時：全ユーザー共通のランダム順でA〜Dに分散
-   * - preserveOrder=true かつ choiceSeedPrefix 空文字時：保存済みの選択肢順をそのまま維持
-   * - preserveOrder=false 時（弱点復習など）：問題順・選択肢順ともにランダムシャッフル
    */
   static normalizeQuestions(
     questions,
@@ -151,7 +148,6 @@ export class QuestionEngine {
       };
     });
 
-    // 保存済みデータ等で1番目（A）に正解が偏っている場合は自動再分散
     if (this.hasUnshuffledFirstChoiceBias(normalized)) {
       const fixSeed = choiceSeedPrefix || `${this.getTodayJstString()}_${subject}_fix`;
       return normalized.map((q, idx) => ({
@@ -189,7 +185,7 @@ export class QuestionEngine {
   }
 
   /**
-   * 本日の問題セットを Firestore ＆ ローカルに保存（1日1回自動作成 または 管理画面からの再作成上書き）
+   * 本日の問題セットを Firestore ＆ ローカルに保存
    */
   static async saveDailyQuizSet(
     grade,
@@ -203,7 +199,6 @@ export class QuestionEngine {
     const normalizedSubject =
       subject === 'english' || subject === 'english_listening' ? 'english' : subject;
 
-    // すでにシャッフル済みの順序を維持（未シャッフルなら dailyKey で自動分散）
     const fixedQuestions = this.normalizeQuestions(questions, normalizedSubject, 10, true, '');
 
     const payload = {
@@ -236,7 +231,7 @@ export class QuestionEngine {
   }
 
   /**
-   * 本日作成済みの全科目の日替わり問題一覧を Firestore から取得（ホーム・管理画面用）
+   * 本日作成済みの全科目の日替わり問題一覧を Firestore から取得
    */
   static async getTodayDailySetsMap(dateStr = this.getTodayJstString()) {
     const resultMap = {};
@@ -294,7 +289,7 @@ export class QuestionEngine {
   }
 
   /**
-   * 内蔵問題エンジンから「本日の固定10問（選択肢もシード固定シャッフル済み）」を生成
+   * 内蔵問題エンジンから「本日の固定10問」を生成
    */
   static buildDeterministicFallbackQuiz(grade, subject, dateStr) {
     const seedKey = `${dateStr}_${subject}_${grade}`;
@@ -367,7 +362,34 @@ export class QuestionEngine {
   }
 
   /**
-   * APIキーで利用可能な generateContent 対応モデル一覧を取得
+   * 応答テキストから JSON 配列（[...]）を安全に抽出してパースする
+   */
+  static extractJsonArrayFromText(rawText) {
+    const cleaned = String(rawText || '')
+      .replace(/```json\s*/gi, '')
+      .replace(/```\s*/g, '')
+      .trim();
+
+    try {
+      const direct = JSON.parse(cleaned);
+      if (Array.isArray(direct)) return direct;
+    } catch {
+      // 前後に説明文が含まれる場合は最初の '[' から最後の ']' を抽出
+    }
+
+    const startIdx = cleaned.indexOf('[');
+    const endIdx = cleaned.lastIndexOf(']');
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      const slice = cleaned.slice(startIdx, endIdx + 1);
+      const parsed = JSON.parse(slice);
+      if (Array.isArray(parsed)) return parsed;
+    }
+
+    throw new Error('AIの応答から問題データ（JSON配列）を読み取れませんでした。');
+  }
+
+  /**
+   * APIキーで利用可能な Gemini テキスト生成モデル一覧を取得（Gemma等の非対象モデルを除外）
    */
   static async discoverAvailableGeminiModels(cleanKey) {
     const controller = new AbortController();
@@ -382,22 +404,40 @@ export class QuestionEngine {
       const models = Array.isArray(json?.models) ? json.models : [];
 
       return models
-        .filter(
-          (m) =>
-            Array.isArray(m.supportedGenerationMethods) &&
-            m.supportedGenerationMethods.includes('generateContent') &&
-            typeof m.name === 'string'
-        )
+        .filter((m) => {
+          if (
+            !Array.isArray(m.supportedGenerationMethods) ||
+            !m.supportedGenerationMethods.includes('generateContent') ||
+            typeof m.name !== 'string'
+          ) {
+            return false;
+          }
+          const lower = m.name.toLowerCase();
+          // gemini- 系のみを対象とし、特殊用途・画像・音声専用モデルを除外
+          if (!lower.includes('gemini-')) return false;
+          if (
+            lower.includes('embedding') ||
+            lower.includes('imagen') ||
+            lower.includes('veo') ||
+            lower.includes('tts') ||
+            lower.includes('robotics') ||
+            lower.includes('computer-use') ||
+            lower.includes('deep-research')
+          ) {
+            return false;
+          }
+          return true;
+        })
         .map((m) => m.name.replace(/^models\//, ''))
         .sort((a, b) => {
           const score = (name) => {
             let s = 0;
             if (name.includes('flash')) s += 100;
-            if (name.includes('3.8')) s += 50;
-            else if (name.includes('gemini-3')) s += 40;
-            else if (name.includes('2.5')) s += 30;
+            if (name.includes('2.5-flash')) s += 60;
+            else if (name.includes('2.0-flash')) s += 50;
+            else if (name.includes('3-flash') || name.includes('3.8-flash')) s += 45;
             if (name.includes('lite')) s -= 5;
-            if (name.includes('exp') || name.includes('preview')) s -= 10;
+            if (name.includes('exp') || name.includes('preview')) s -= 15;
             return s;
           };
           return score(b) - score(a);
@@ -410,16 +450,23 @@ export class QuestionEngine {
   }
 
   /**
-   * 単一モデルへの generateContent リクエスト実行ヘルパー（15秒タイムアウト付き）
+   * 単一モデルへの generateContent リクエスト実行（JSONモード非対応時は自動で通常モード再試行）
    */
-  static async requestGeminiWithModel(model, cleanKey, prompt) {
+  static async requestGeminiWithModel(model, cleanKey, prompt, useJsonMode = true) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 18000);
 
     try {
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
         model
       )}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+
+      const generationConfig = {
+        temperature: 0.85
+      };
+      if (useJsonMode) {
+        generationConfig.responseMimeType = 'application/json';
+      }
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -427,10 +474,7 @@ export class QuestionEngine {
         signal: controller.signal,
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.85,
-            responseMimeType: 'application/json'
-          }
+          generationConfig
         })
       });
 
@@ -443,6 +487,16 @@ export class QuestionEngine {
           apiDetail = '';
         }
 
+        // JSON mode が無効なモデル（400）の場合は、responseMimeType を外して即座に再試行
+        if (
+          useJsonMode &&
+          response.status === 400 &&
+          /json mode|response_mime_type|not enabled|not supported/i.test(apiDetail)
+        ) {
+          clearTimeout(timeoutId);
+          return await this.requestGeminiWithModel(model, cleanKey, prompt, false);
+        }
+
         const err = new Error(
           `Gemini APIエラー (${response.status}): ${apiDetail || 'APIキーまたは利用制限を確認してください。'}`
         );
@@ -453,11 +507,7 @@ export class QuestionEngine {
 
       const data = await response.json();
       const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
-      const cleanedJson = rawText
-        .replace(/^```json\s*/i, '')
-        .replace(/```\s*$/i, '')
-        .trim();
-      const parsed = JSON.parse(cleanedJson);
+      const parsed = this.extractJsonArrayFromText(rawText);
 
       if (Array.isArray(parsed) && parsed.length > 0 && typeof localStorage !== 'undefined') {
         localStorage.setItem(WORKING_MODEL_CACHE_KEY, model);
@@ -466,6 +516,16 @@ export class QuestionEngine {
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  /**
+   * APIキー自体が無効・権限不足であるか判定する
+   */
+  static isFatalAuthError(err) {
+    if (!err) return false;
+    if (err.status === 401 || err.status === 403) return true;
+    const msg = `${err.message || ''} ${err.apiDetail || ''}`.toLowerCase();
+    return msg.includes('api key not valid') || msg.includes('api_key_invalid');
   }
 
   /**
@@ -519,10 +579,10 @@ ${subjectInstruction}${topicConstraint}
         [
           cachedWorkingModel,
           AppConfig && AppConfig.GEMINI_MODEL,
-          'gemini-3.8-flash',
-          'gemini-3.8-flash-lite',
+          'gemini-2.5-flash',
+          'gemini-2.0-flash',
           'gemini-3-flash',
-          'gemini-2.5-flash'
+          'gemini-3.8-flash'
         ].filter(Boolean)
       )
     );
@@ -534,14 +594,17 @@ ${subjectInstruction}${topicConstraint}
     for (const model of initialCandidates) {
       triedModels.add(model);
       try {
-        const parsed = await this.requestGeminiWithModel(model, cleanKey, prompt);
+        const parsed = await this.requestGeminiWithModel(model, cleanKey, prompt, true);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const normalizedSubject = isEnglish ? 'english' : subject;
           return this.normalizeQuestions(parsed, normalizedSubject, count, true, choiceSeed);
         }
       } catch (err) {
         lastError = err;
-        if (err.status && err.status !== 404) {
+        if (model === cachedWorkingModel && typeof localStorage !== 'undefined') {
+          localStorage.removeItem(WORKING_MODEL_CACHE_KEY);
+        }
+        if (this.isFatalAuthError(err)) {
           throw err;
         }
       }
@@ -552,14 +615,14 @@ ${subjectInstruction}${topicConstraint}
       if (triedModels.has(model)) continue;
       triedModels.add(model);
       try {
-        const parsed = await this.requestGeminiWithModel(model, cleanKey, prompt);
+        const parsed = await this.requestGeminiWithModel(model, cleanKey, prompt, true);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const normalizedSubject = isEnglish ? 'english' : subject;
           return this.normalizeQuestions(parsed, normalizedSubject, count, true, choiceSeed);
         }
       } catch (err) {
         lastError = err;
-        if (err.status && err.status !== 404) {
+        if (this.isFatalAuthError(err)) {
           throw err;
         }
       }
@@ -585,7 +648,7 @@ ${subjectInstruction}${topicConstraint}
         ? 'english'
         : targetSubject;
 
-    // 1. Firestore から「本日の問題セット」を確認（すでに作成済みなら再生成せず全ユーザー同一問題を出題）
+    // 1. Firestore から「本日の問題セット」を確認
     if (this.firestoreDb) {
       try {
         const ref = doc(this.firestoreDb, FIRESTORE_DAILY_COLLECTION, dailyKey);
@@ -609,7 +672,7 @@ ${subjectInstruction}${topicConstraint}
       return this.normalizeQuestions(localCached.questions, normalizedSubject, 10, true, '');
     }
 
-    // 3. 本日まだ作成されていない場合のみ、1日1回の新規作成を実行（同時実行ロック付き）
+    // 3. 本日まだ作成されていない場合のみ、1日1回の新規作成を実行
     if (this.inFlightRequests.has(dailyKey)) {
       return this.inFlightRequests.get(dailyKey);
     }
