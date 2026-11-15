@@ -1,5 +1,5 @@
 // src/data/QuestionEngine.js
-// 1日1回自動生成＆全ユーザー同一出題（JSONモード自動フォールバック・選択肢シャッフル固定対応）
+// 1日1回自動生成＆全ユーザー同一出題（非英語科目からの英語問題完全除外・選択肢シャッフル固定対応）
 
 import {
   doc,
@@ -18,6 +18,29 @@ const DAILY_STORAGE_PREFIX = 'learndaily_daily_quiz_';
 const WORKING_MODEL_CACHE_KEY = 'learndaily_working_gemini_model';
 const FIRESTORE_DAILY_COLLECTION = 'daily_ai_quizzes';
 
+// 算数・理科等で使う一般的な単位・人物記号（英語問題と誤判定しないための除外リスト）
+const NON_ENGLISH_UNIT_TOKENS = new Set([
+  'cm',
+  'mm',
+  'km',
+  'm',
+  'kg',
+  'mg',
+  'g',
+  'ml',
+  'dl',
+  'l',
+  'a',
+  'b',
+  'c',
+  'd',
+  'x',
+  'y',
+  'z',
+  'p',
+  'q'
+]);
+
 export class QuestionEngine {
   static firestoreDb = null;
   static inFlightRequests = new Map();
@@ -29,6 +52,65 @@ export class QuestionEngine {
     if (dbInstance) {
       this.firestoreDb = dbInstance;
     }
+  }
+
+  /**
+   * 英語テスト科目かどうかを判定
+   */
+  static isEnglishSubject(subject) {
+    return subject === 'english' || subject === 'english_listening';
+  }
+
+  /**
+   * 問題オブジェクトが「英語の問題」であるかを厳密に判定する
+   * （算数の単位 cm / kg / mL や A・B などの記号は誤判定しない）
+   */
+  static isEnglishQuestionItem(q) {
+    if (!q || typeof q !== 'object') return false;
+
+    // 1. 科目・タイプ・音声テキストによる明示判定
+    if (this.isEnglishSubject(q.subject)) return true;
+    if (q.type === 'listening') return true;
+    if (q.audioText && String(q.audioText).trim().length > 0) return true;
+
+    const category = String(q.category || '');
+    const questionText = String(q.question || '');
+    const combinedHeader = `${category} ${questionText}`;
+
+    // 2. カテゴリや問題文に英語学習を示すキーワードが含まれる場合
+    if (/英語|英単語|英文|リスニング|アルファベット|英訳|和訳|ローマ字/i.test(combinedHeader)) {
+      return true;
+    }
+
+    // 3. 問題文中に2語以上の連続した英語フレーズ（例: "Good morning", "What is"）がある場合
+    const englishPhraseMatch = questionText.match(/\b[A-Za-z]{2,}(?:\s+[A-Za-z]{2,})+\b/);
+    if (englishPhraseMatch) {
+      return true;
+    }
+
+    // 4. 選択肢（choices）の過半数が英単語・英語フレーズで構成されている場合
+    const choices = Array.isArray(q.choices) ? q.choices : [];
+    if (choices.length > 0) {
+      const englishChoiceCount = choices.filter((choice) => {
+        const trimmed = String(choice || '').trim();
+        if (!trimmed) return false;
+        // 純粋な英字＋記号のみで構成され、かつ算数の単位ではない3文字以上の単語を含む
+        if (!/^[A-Za-z0-9\s.,!?'"()-]+$/.test(trimmed)) return false;
+        const words = trimmed
+          .toLowerCase()
+          .replace(/[^a-z\s]/g, '')
+          .split(/\s+/)
+          .filter(Boolean);
+        if (words.length === 0) return false;
+        return words.some((w) => w.length >= 2 && !NON_ENGLISH_UNIT_TOKENS.has(w));
+      }).length;
+
+      if (englishChoiceCount >= Math.ceil(choices.length / 2)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
@@ -45,7 +127,7 @@ export class QuestionEngine {
    */
   static getDailySetKey(grade, subject, dateStr = this.getTodayJstString()) {
     const subj = subject || 'math';
-    if (subj === 'english' || subj === 'english_listening') {
+    if (this.isEnglishSubject(subj)) {
       return `${dateStr}_${subj}`;
     }
     return `${dateStr}_${subj}_${String(grade || '2')}`;
@@ -109,7 +191,7 @@ export class QuestionEngine {
   }
 
   /**
-   * 問題データの形式を統一し、選択肢をシード固定でシャッフルする
+   * 問題データの形式を統一し、非英語科目では英語問題を確実に除外・選択肢をシャッフルする
    */
   static normalizeQuestions(
     questions,
@@ -118,11 +200,20 @@ export class QuestionEngine {
     preserveOrder = true,
     choiceSeedPrefix = ''
   ) {
-    const baseList = preserveOrder ? [...questions] : this.shuffle(questions);
+    const allowEnglish = this.isEnglishSubject(subject);
+    const filteredList = (Array.isArray(questions) ? questions : []).filter((q) => {
+      if (!q || !q.question) return false;
+      if (!allowEnglish && this.isEnglishQuestionItem(q)) {
+        return false;
+      }
+      return true;
+    });
+
+    const baseList = preserveOrder ? [...filteredList] : this.shuffle(filteredList);
     const selected = baseList.slice(0, count);
 
     const normalized = selected.map((q, index) => {
-      const hasAudio = Boolean(q.audioText && String(q.audioText).trim());
+      const hasAudio = allowEnglish && Boolean(q.audioText && String(q.audioText).trim());
       const rawChoices = Array.isArray(q.choices) ? [...q.choices] : [];
 
       let finalChoices = rawChoices;
@@ -137,9 +228,9 @@ export class QuestionEngine {
 
       return {
         id: q.id || `${subject}_q_${index + 1}`,
-        subject,
-        type: q.type || (hasAudio ? 'listening' : 'standard'),
-        audioText: q.audioText || '',
+        subject: allowEnglish ? 'english' : subject,
+        type: allowEnglish ? q.type || (hasAudio ? 'listening' : 'standard') : 'standard',
+        audioText: allowEnglish ? q.audioText || '' : '',
         category: q.category || '思考トレーニング',
         question: q.question,
         choices: finalChoices,
@@ -196,10 +287,22 @@ export class QuestionEngine {
   ) {
     if (!Array.isArray(questions) || questions.length === 0) return false;
     const dailyKey = this.getDailySetKey(grade, subject, dateStr);
-    const normalizedSubject =
-      subject === 'english' || subject === 'english_listening' ? 'english' : subject;
+    const normalizedSubject = this.isEnglishSubject(subject) ? 'english' : subject;
 
-    const fixedQuestions = this.normalizeQuestions(questions, normalizedSubject, 10, true, '');
+    let fixedQuestions = this.normalizeQuestions(questions, normalizedSubject, 10, true, '');
+
+    // 非英語科目で英語問題除外により10問未満になった場合、内蔵の算数・国語問題で10問まで補填
+    if (!this.isEnglishSubject(subject) && fixedQuestions.length < 10) {
+      const supplement = this.buildDeterministicFallbackQuiz(grade, subject, dateStr);
+      const existingTexts = new Set(fixedQuestions.map((item) => item.question));
+      for (const item of supplement) {
+        if (fixedQuestions.length >= 10) break;
+        if (!existingTexts.has(item.question)) {
+          fixedQuestions.push(item);
+          existingTexts.add(item.question);
+        }
+      }
+    }
 
     const payload = {
       date: dateStr,
@@ -290,6 +393,7 @@ export class QuestionEngine {
 
   /**
    * 内蔵問題エンジンから「本日の固定10問」を生成
+   * （英語テスト以外には絶対に英語問題を混ぜない）
    */
   static buildDeterministicFallbackQuiz(grade, subject, dateStr) {
     const seedKey = `${dateStr}_${subject}_${grade}`;
@@ -323,13 +427,14 @@ export class QuestionEngine {
     }
 
     if (subject === 'japanese') {
-      const pool =
+      const rawPool =
         (typeof QuestionBank.getJapaneseQuestions === 'function'
           ? QuestionBank.getJapaneseQuestions(grade)
           : String(grade) === '5'
           ? QuestionBank.GRADE5_JAPANESE
           : QuestionBank.GRADE2_JAPANESE) || [];
-      const picked = this.deterministicShuffle(pool, seedKey).slice(0, 10);
+      const pureJapanesePool = rawPool.filter((q) => !this.isEnglishQuestionItem(q));
+      const picked = this.deterministicShuffle(pureJapanesePool, seedKey).slice(0, 10);
       return this.normalizeQuestions(picked, 'japanese', 10, true, seedKey);
     }
 
@@ -351,11 +456,11 @@ export class QuestionEngine {
           : String(grade) === '5'
           ? QuestionBank.GRADE5_MATH_FALLBACK
           : QuestionBank.GRADE2_MATH_FALLBACK) || [];
-      const combined = generated.length >= 10 ? generated : [...generated, ...fallback];
-      return this.normalizeQuestions(combined, 'math', 10, true, seedKey);
+      const pureMathPool = [...generated, ...fallback].filter((q) => !this.isEnglishQuestionItem(q));
+      return this.normalizeQuestions(pureMathPool, 'math', 10, true, seedKey);
     }
 
-    // 総合（算数5問 ＋ 国語5問）
+    // 総合（算数5問 ＋ 国語5問：英語は一切含めない）
     const mathPart = this.buildDeterministicFallbackQuiz(grade, 'math', dateStr).slice(0, 5);
     const jpPart = this.buildDeterministicFallbackQuiz(grade, 'japanese', dateStr).slice(0, 5);
     return [...mathPart, ...jpPart];
@@ -389,7 +494,7 @@ export class QuestionEngine {
   }
 
   /**
-   * APIキーで利用可能な Gemini テキスト生成モデル一覧を取得（Gemma等の非対象モデルを除外）
+   * APIキーで利用可能な Gemini テキスト生成モデル一覧を取得
    */
   static async discoverAvailableGeminiModels(cleanKey) {
     const controller = new AbortController();
@@ -413,7 +518,6 @@ export class QuestionEngine {
             return false;
           }
           const lower = m.name.toLowerCase();
-          // gemini- 系のみを対象とし、特殊用途・画像・音声専用モデルを除外
           if (!lower.includes('gemini-')) return false;
           if (
             lower.includes('embedding') ||
@@ -487,7 +591,6 @@ export class QuestionEngine {
           apiDetail = '';
         }
 
-        // JSON mode が無効なモデル（400）の場合は、responseMimeType を外して即座に再試行
         if (
           useJsonMode &&
           response.status === 400 &&
@@ -529,7 +632,7 @@ export class QuestionEngine {
   }
 
   /**
-   * Gemini API を使って新しい問題を生成（1日1回の初回作成 ＆ 管理画面からの手動再作成共用）
+   * Gemini API を使って新しい問題を生成（英語テスト以外には英語問題を一切含めない）
    */
   static async fetchQuestionsFromGemini(grade, subject, apiKey, count = 10, customTopic = '') {
     const cleanKey = String(apiKey || '').trim();
@@ -537,17 +640,17 @@ export class QuestionEngine {
       throw new Error('Gemini APIキーが設定されていません。');
     }
 
-    const isEnglish = subject === 'english' || subject === 'english_listening';
+    const isEnglish = this.isEnglishSubject(subject);
     const subjectInstruction =
       subject === 'english_listening'
         ? `日本の小学生がゼロから楽しく学ぶための「英語リスニング問題」を${count}問作成してください。すべての問題で type を "listening" にし、audioText に読み上げる英単語や短い英語フレーズを入れ、question には「【リスニング】スピーカーボタンを押して英語の発音を聞き、正しい意味をえらぼう！」と記載し、choices には4つの日本語の意味を入れてください。`
         : subject === 'english'
         ? `日本の小学生がゼロから楽しく学ぶための「英語入門」の問題を${count}問作成してください。内訳は7問を通常問題（type: "standard"、audioText: ""、日本語の問題文＋4つの英語選択肢）、3問をリスニング問題（type: "listening"、audioText: "読み上げる英語"、日本語の意味を4択から選ぶ形式）にしてください。`
         : subject === 'japanese'
-        ? `小学${grade}年生向けに、未来を生き抜く読解力・語彙力・論理的思考力を育てる国語の問題を${count}問作成してください。`
+        ? `小学${grade}年生向けに、未来を生き抜く読解力・語彙力・論理的思考力を育てる「国語」の問題のみを${count}問作成してください。【絶対厳守】すべて日本語のみで作成し、英語・英単語・アルファベット・外国語の問題は1問も出題しないでください。type は必ず "standard"、audioText は必ず ""（空文字）にしてください。`
         : subject === 'math'
-        ? `小学${grade}年生向けに、自ら考え筋道を立てて解く思考力算数の問題を${count}問作成してください。`
-        : `小学${grade}年生向けに、算数と国語の総合思考力問題を${count}問作成してください。`;
+        ? `小学${grade}年生向けに、自ら考え筋道を立てて解く「算数・思考力」の問題のみを${count}問作成してください。【絶対厳守】すべて日本語と数字・算数の記号のみで作成し、英語・英単語・アルファベット・外国語の問題は1問も出題しないでください。type は必ず "standard"、audioText は必ず ""（空文字）にしてください。`
+        : `小学${grade}年生向けに、「算数」5問と「国語」5問の計${count}問の総合思考力問題を作成してください。【絶対厳守】すべて日本語と数字のみで作成し、英語・英単語の問題は1問も含めないでください。type は必ず "standard"、audioText は必ず ""（空文字）にしてください。`;
 
     const topicConstraint =
       customTopic && customTopic.trim()
@@ -591,13 +694,35 @@ ${subjectInstruction}${topicConstraint}
     let lastError = null;
     const choiceSeed = `${this.getDailySetKey(grade, subject)}_${customTopic || 'ai'}`;
 
+    const finalizeAiResult = (parsed) => {
+      const normalizedSubject = isEnglish ? 'english' : subject;
+      let result = this.normalizeQuestions(parsed, normalizedSubject, count, true, choiceSeed);
+
+      // 非英語科目で英語問題除外により問題数が減った場合は内蔵問題で補填
+      if (!isEnglish && result.length < count) {
+        const fallback = this.buildDeterministicFallbackQuiz(
+          grade,
+          subject,
+          this.getTodayJstString()
+        );
+        const existing = new Set(result.map((item) => item.question));
+        for (const item of fallback) {
+          if (result.length >= count) break;
+          if (!existing.has(item.question)) {
+            result.push(item);
+            existing.add(item.question);
+          }
+        }
+      }
+      return result;
+    };
+
     for (const model of initialCandidates) {
       triedModels.add(model);
       try {
         const parsed = await this.requestGeminiWithModel(model, cleanKey, prompt, true);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const normalizedSubject = isEnglish ? 'english' : subject;
-          return this.normalizeQuestions(parsed, normalizedSubject, count, true, choiceSeed);
+          return finalizeAiResult(parsed);
         }
       } catch (err) {
         lastError = err;
@@ -617,8 +742,7 @@ ${subjectInstruction}${topicConstraint}
       try {
         const parsed = await this.requestGeminiWithModel(model, cleanKey, prompt, true);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const normalizedSubject = isEnglish ? 'english' : subject;
-          return this.normalizeQuestions(parsed, normalizedSubject, count, true, choiceSeed);
+          return finalizeAiResult(parsed);
         }
       } catch (err) {
         lastError = err;
@@ -637,16 +761,36 @@ ${subjectInstruction}${topicConstraint}
   /**
    * メインの出題エントリーポイント
    * ルール：1日1回だけ作成して保存し、その日中は全ユーザーに全く同じ問題・選択肢順を出題する
+   *       英語テスト以外には英語問題を一切出題しない
    */
   static async generateQuiz(grade, subject, customApiKey = '') {
     const targetSubject = subject || 'math';
     const targetGrade = String(grade || '2');
     const today = this.getTodayJstString();
     const dailyKey = this.getDailySetKey(targetGrade, targetSubject, today);
-    const normalizedSubject =
-      targetSubject === 'english' || targetSubject === 'english_listening'
-        ? 'english'
-        : targetSubject;
+    const isEnglish = this.isEnglishSubject(targetSubject);
+    const normalizedSubject = isEnglish ? 'english' : targetSubject;
+
+    // 保存済みデータに英語混入があった場合の自動クレンジング＆補填ヘルパー
+    const sanitizeSavedQuestions = async (savedQuestions, sourceType) => {
+      const cleaned = this.normalizeQuestions(savedQuestions, normalizedSubject, 10, true, '');
+      const hadEnglishContamination = !isEnglish && cleaned.length < savedQuestions.length;
+
+      if (hadEnglishContamination) {
+        await this.saveDailyQuizSet(
+          targetGrade,
+          targetSubject,
+          cleaned,
+          sourceType || 'auto_daily',
+          today
+        );
+        const refreshed = this.getDailySetFromLocal(dailyKey);
+        if (refreshed && Array.isArray(refreshed.questions)) {
+          return refreshed.questions;
+        }
+      }
+      return cleaned;
+    };
 
     // 1. Firestore から「本日の問題セット」を確認
     if (this.firestoreDb) {
@@ -656,9 +800,9 @@ ${subjectInstruction}${topicConstraint}
         if (snap.exists()) {
           const data = snap.data();
           if (Array.isArray(data?.questions) && data.questions.length > 0) {
-            const normalized = this.normalizeQuestions(data.questions, normalizedSubject, 10, true, '');
-            this.saveDailySetToLocal(dailyKey, { ...data, questions: normalized });
-            return normalized;
+            const sanitized = await sanitizeSavedQuestions(data.questions, data.source);
+            this.saveDailySetToLocal(dailyKey, { ...data, questions: sanitized });
+            return sanitized;
           }
         }
       } catch (err) {
@@ -669,7 +813,7 @@ ${subjectInstruction}${topicConstraint}
     // 2. ローカルキャッシュに本日分がある場合はそれを返す
     const localCached = this.getDailySetFromLocal(dailyKey);
     if (localCached && Array.isArray(localCached.questions) && localCached.questions.length > 0) {
-      return this.normalizeQuestions(localCached.questions, normalizedSubject, 10, true, '');
+      return sanitizeSavedQuestions(localCached.questions, localCached.source);
     }
 
     // 3. 本日まだ作成されていない場合のみ、1日1回の新規作成を実行
@@ -729,7 +873,8 @@ ${subjectInstruction}${topicConstraint}
           today
         );
 
-        return this.normalizeQuestions(createdQuestions, normalizedSubject, 10, true, '');
+        const latestSaved = this.getDailySetFromLocal(dailyKey);
+        return latestSaved?.questions || this.normalizeQuestions(createdQuestions, normalizedSubject, 10, true, '');
       } finally {
         this.inFlightRequests.delete(dailyKey);
       }
