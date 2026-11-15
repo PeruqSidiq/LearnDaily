@@ -1,8 +1,15 @@
 // src/components/PageViews.jsx
-// 全5画面ビュー（ホーム・テスト実行・結果・学習履歴・保護者管理[1日1回共通問題＋管理画面再作成上書き対応]）
+// 全5画面ビュー（ホーム・テスト実行・結果・学習履歴・保護者管理[詳細統計＆誤答分析対応]）
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  deleteDoc,
+  collection,
+  getDocs
+} from 'firebase/firestore';
 import {
   BookOpen,
   Play,
@@ -30,14 +37,21 @@ import {
   Headphones,
   RefreshCw,
   Loader2,
-  Cloud
+  Cloud,
+  Users,
+  User,
+  BarChart3,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
+  Filter
 } from 'lucide-react';
 import { AppConfig } from '../config/AppConfig';
 import { QuizUtils } from '../utils/QuizUtils';
 import { QuestionEngine } from '../data/QuestionEngine';
 
 // =========================================================================
-// 共通ヘルパー（音声読み上げ・英語判定・科目メタデータ・ステージ判定）
+// 共通ヘルパー（音声読み上げ・英語判定・科目メタデータ・日時フォーマット）
 // =========================================================================
 const speakEnglishText = (text, rate = 0.85) => {
   if (!text || typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -65,27 +79,37 @@ const isEnglishPhrase = (text) => {
 const SUBJECT_META = {
   math: {
     label: AppConfig?.SUBJECT_LABELS?.math || '算数・思考力',
+    shortLabel: '算数',
     badgeClass: 'bg-blue-100 text-blue-700',
+    barClass: 'bg-blue-600',
     buttonClass: 'bg-blue-600 hover:bg-blue-700'
   },
   japanese: {
     label: AppConfig?.SUBJECT_LABELS?.japanese || '国語・読解＆ことば',
+    shortLabel: '国語',
     badgeClass: 'bg-rose-100 text-rose-700',
+    barClass: 'bg-rose-500',
     buttonClass: 'bg-rose-600 hover:bg-rose-700'
   },
   english: {
     label: AppConfig?.SUBJECT_LABELS?.english || '英語（English）入門',
+    shortLabel: '英語',
     badgeClass: 'bg-emerald-100 text-emerald-700',
+    barClass: 'bg-emerald-600',
     buttonClass: 'bg-emerald-600 hover:bg-emerald-700'
   },
   english_listening: {
     label: AppConfig?.SUBJECT_LABELS?.english_listening || '英語リスニング集中',
+    shortLabel: '英語リスニング',
     badgeClass: 'bg-teal-100 text-teal-700',
+    barClass: 'bg-teal-600',
     buttonClass: 'bg-teal-600 hover:bg-teal-700'
   },
   mixed: {
     label: AppConfig?.SUBJECT_LABELS?.mixed || '総合思考力チャレンジ',
+    shortLabel: '総合',
     badgeClass: 'bg-purple-100 text-purple-700',
+    barClass: 'bg-purple-600',
     buttonClass: 'bg-purple-600 hover:bg-purple-700'
   }
 };
@@ -100,6 +124,26 @@ const formatSeconds = (sec) => {
   const m = Math.floor(safe / 60);
   const s = safe % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+};
+
+const formatJstDateTime = (rawDate) => {
+  if (!rawDate) return '-';
+  const str = String(rawDate);
+  if (str.length === 10) return str;
+  const d = new Date(str);
+  if (Number.isNaN(d.getTime())) return str.slice(0, 16);
+  const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return `${jst.toISOString().slice(0, 10)} ${jst.toISOString().slice(11, 16)}`;
+};
+
+const getJstDateOnly = (rawDate) => {
+  if (!rawDate) return '';
+  const str = String(rawDate);
+  if (str.length === 10) return str;
+  const d = new Date(str);
+  if (Number.isNaN(d.getTime())) return str.slice(0, 10);
+  const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().slice(0, 10);
 };
 
 const getStageBadge = (percentage) => {
@@ -156,7 +200,6 @@ export function HomeView({
   const [todaySets, setTodaySets] = useState({});
   const todayStr = useMemo(() => QuestionEngine.getTodayJstString(), []);
 
-  // 本日の作成済み日替わり問題マップを同期
   useEffect(() => {
     if (db) QuestionEngine.setFirestoreDb(db);
     let mounted = true;
@@ -202,8 +245,8 @@ export function HomeView({
 
   const stats = useMemo(() => {
     const todayCount = allHistory.filter((item) => {
-      const d = item.date || item.createdAt || '';
-      return String(d).startsWith(todayStr);
+      const d = getJstDateOnly(item.date || item.createdAt);
+      return d === todayStr;
     }).length;
 
     const totalCount = allHistory.length;
@@ -499,7 +542,7 @@ export function HomeView({
 }
 
 // =========================================================================
-// 2. テスト実行画面（QuizRunnerView - リスニング問題＆音声読み上げ完全対応）
+// 2. テスト実行画面（QuizRunnerView）
 // =========================================================================
 export function QuizRunnerView({
   questions = [],
@@ -1122,16 +1165,16 @@ export function HistoryView({
 
   const last30Days = useMemo(() => {
     const studiedSet = new Set(
-      allHistory.map((item) => String(item.date || item.createdAt || '').slice(0, 10))
+      allHistory.map((item) => getJstDateOnly(item.date || item.createdAt))
     );
     const days = [];
     for (let i = 29; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const iso = d.toISOString().slice(0, 10);
+      const iso = getJstDateOnly(d.toISOString());
       days.push({
         iso,
-        dayNum: d.getDate(),
+        dayNum: Number(iso.slice(8, 10)),
         studied: studiedSet.has(iso)
       });
     }
@@ -1285,7 +1328,7 @@ export function HistoryView({
                       {isEnglishSubject(item.subject) ? '全学年共通' : `${item.grade || '2'}年生`}
                     </span>
                     <span className="text-xs text-slate-400">
-                      {String(item.date || item.createdAt || '').slice(0, 10)}
+                      {formatJstDateTime(item.date || item.createdAt)}
                     </span>
                   </div>
 
@@ -1310,7 +1353,7 @@ export function HistoryView({
 }
 
 // =========================================================================
-// 5. 保護者・管理者画面（AdminView - 1日1回問題の管理 ＆ 手動再作成上書き）
+// 5. 保護者・管理者画面（AdminView - 子供たちの詳細成績統計・誤答分析＆問題管理）
 // =========================================================================
 export function AdminView({
   db,
@@ -1333,7 +1376,7 @@ export function AdminView({
   const [savedNotice, setSavedNotice] = useState('');
   const [keyError, setKeyError] = useState('');
 
-  // --- AI問題再作成（ジェネレーター）用ステート ---
+  // --- AI問題再作成用ステート ---
   const [genSubject, setGenSubject] = useState('english');
   const [genGrade, setGenGrade] = useState('2');
   const [genTopic, setGenTopic] = useState('');
@@ -1343,6 +1386,14 @@ export function AdminView({
   const [previewQuestions, setPreviewQuestions] = useState([]);
   const [appliedNotice, setAppliedNotice] = useState('');
   const [todaySetsMap, setTodaySetsMap] = useState({});
+
+  // --- 子供たちのテスト結果＆詳細統計分析用ステート ---
+  const [liveRecords, setLiveRecords] = useState([]);
+  const [isRefreshingRecords, setIsRefreshingRecords] = useState(false);
+  const [selectedLearnerKey, setSelectedLearnerKey] = useState('all');
+  const [statPeriodFilter, setStatPeriodFilter] = useState('all'); // 'all' | 'today' | 'week' | 'month'
+  const [statSubjectFilter, setStatSubjectFilter] = useState('all'); // 'all' | 'math' | 'japanese' | 'english' | 'mixed'
+  const [expandedRecordId, setExpandedRecordId] = useState(null);
 
   const todayStr = useMemo(() => QuestionEngine.getTodayJstString(), []);
   const adminEmail = AppConfig?.ADMIN_EMAIL || 'peruqsidiq@gmail.com';
@@ -1354,7 +1405,33 @@ export function AdminView({
     }
   }, [customApiKey]);
 
-  // 管理画面表示時に本日の日替わり問題一覧とAPIキーを同期
+  // Firestore から最新の全学習レコードを再取得する関数
+  const fetchLatestAllRecords = useCallback(async () => {
+    if (!db || !hasAdminAccess) return;
+    setIsRefreshingRecords(true);
+    try {
+      const snap = await getDocs(collection(db, 'learning_records'));
+      const fetched = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        fetched.push({
+          id: docSnap.id,
+          ...data,
+          date:
+            data.date ||
+            (data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString())
+        });
+      });
+      fetched.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+      setLiveRecords(fetched);
+    } catch (err) {
+      console.warn('最新学習データの再取得スキップ:', err);
+    } finally {
+      setIsRefreshingRecords(false);
+    }
+  }, [db, hasAdminAccess]);
+
+  // 管理画面表示時に本日の日替わり問題・APIキー・最新学習履歴を同期
   useEffect(() => {
     if (!hasAdminAccess) return;
     if (db) QuestionEngine.setFirestoreDb(db);
@@ -1365,6 +1442,8 @@ export function AdminView({
         setTodaySetsMap(map);
       }
     });
+
+    fetchLatestAllRecords();
 
     if (db) {
       getDoc(doc(db, 'admin_settings', 'gemini_config'))
@@ -1385,7 +1464,260 @@ export function AdminView({
     return () => {
       mounted = false;
     };
-  }, [db, hasAdminAccess, todayStr]);
+  }, [db, hasAdminAccess, todayStr, fetchLatestAllRecords]);
+
+  // 利用可能な全テスト記録（最新取得分 ＞ allRecords ＞ history の優先順）
+  const baseRecords = useMemo(() => {
+    if (liveRecords.length > 0) return liveRecords;
+    if (allRecords.length > 0) return allRecords;
+    return history;
+  }, [liveRecords, allRecords, history]);
+
+  // 学習者（子ども）ごとのプロフィール＆総合サマリー一覧を抽出
+  const learnerProfiles = useMemo(() => {
+    const map = new Map();
+
+    baseRecords.forEach((rec) => {
+      const key = rec.uid || rec.userEmail || rec.userName || 'unknown';
+      const displayName =
+        rec.userName ||
+        rec.displayName ||
+        (rec.userEmail ? rec.userEmail.split('@')[0] : 'メンバー');
+
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          name: displayName,
+          email: rec.userEmail || '',
+          records: []
+        });
+      }
+      const entry = map.get(key);
+      // より新しい表示名があれば更新
+      if (rec.userName && entry.name !== rec.userName) {
+        entry.name = rec.userName;
+      }
+      entry.records.push(rec);
+    });
+
+    return Array.from(map.values()).map((learner) => {
+      const totalTests = learner.records.length;
+      const totalCorrect = learner.records.reduce((s, r) => s + (Number(r.score) || 0), 0);
+      const totalQuestions = learner.records.reduce((s, r) => s + (Number(r.total) || 10), 0);
+      const avgRate =
+        totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
+
+      const timedItems = learner.records.filter((r) => typeof r.timeSpent === 'number' && r.timeSpent > 0);
+      const avgTimeSec =
+        timedItems.length > 0
+          ? Math.round(timedItems.reduce((s, r) => s + r.timeSpent, 0) / timedItems.length)
+          : 0;
+
+      const todayTests = learner.records.filter(
+        (r) => getJstDateOnly(r.date || r.createdAt) === todayStr
+      ).length;
+
+      // 得意科目と要復習科目を算出
+      const subjScores = {};
+      learner.records.forEach((r) => {
+        const sKey = isEnglishSubject(r.subject) ? 'english' : r.subject || 'math';
+        if (!subjScores[sKey]) subjScores[sKey] = { correct: 0, total: 0, count: 0 };
+        subjScores[sKey].correct += Number(r.score) || 0;
+        subjScores[sKey].total += Number(r.total) || 10;
+        subjScores[sKey].count += 1;
+      });
+
+      const rankedSubjects = Object.entries(subjScores)
+        .map(([subj, val]) => ({
+          subject: subj,
+          label: SUBJECT_META[subj]?.shortLabel || subj,
+          rate: val.total > 0 ? Math.round((val.correct / val.total) * 100) : 0,
+          count: val.count
+        }))
+        .sort((a, b) => b.rate - a.rate);
+
+      const bestSubject = rankedSubjects[0] || null;
+      const weakestSubject =
+        rankedSubjects.length > 1 ? rankedSubjects[rankedSubjects.length - 1] : null;
+
+      const latestDate = learner.records[0]?.date || learner.records[0]?.createdAt || '';
+
+      return {
+        ...learner,
+        totalTests,
+        totalCorrect,
+        totalQuestions,
+        avgRate,
+        avgTimeSec,
+        todayTests,
+        bestSubject,
+        weakestSubject,
+        latestDate
+      };
+    });
+  }, [baseRecords, todayStr]);
+
+  // フィルター適用後のレコード一覧（学習者・期間・科目）
+  const filteredRecords = useMemo(() => {
+    const now = new Date();
+    const currentYearMonth = todayStr.slice(0, 7);
+
+    return baseRecords.filter((rec) => {
+      // 1. 学習者フィルター
+      if (selectedLearnerKey !== 'all') {
+        const key = rec.uid || rec.userEmail || rec.userName || 'unknown';
+        if (key !== selectedLearnerKey) return false;
+      }
+
+      // 2. 科目フィルター
+      if (statSubjectFilter !== 'all') {
+        if (statSubjectFilter === 'english') {
+          if (!isEnglishSubject(rec.subject)) return false;
+        } else if (rec.subject !== statSubjectFilter) {
+          return false;
+        }
+      }
+
+      // 3. 期間フィルター
+      if (statPeriodFilter === 'all') return true;
+      const jstDay = getJstDateOnly(rec.date || rec.createdAt);
+      if (statPeriodFilter === 'today') {
+        return jstDay === todayStr;
+      }
+      if (statPeriodFilter === 'month') {
+        return jstDay.startsWith(currentYearMonth);
+      }
+      if (statPeriodFilter === 'week') {
+        const d = new Date(rec.date || rec.createdAt || now);
+        if (Number.isNaN(d.getTime())) return true;
+        const diffDays = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
+        return diffDays <= 7;
+      }
+      return true;
+    });
+  }, [baseRecords, selectedLearnerKey, statSubjectFilter, statPeriodFilter, todayStr]);
+
+  // フィルター適用後の詳細集計メトリクス
+  const detailedAnalytics = useMemo(() => {
+    const totalSessions = filteredRecords.length;
+    const totalCorrect = filteredRecords.reduce((s, r) => s + (Number(r.score) || 0), 0);
+    const totalQuestions = filteredRecords.reduce((s, r) => s + (Number(r.total) || 10), 0);
+    const avgPercentage =
+      totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
+
+    const perfectCount = filteredRecords.filter(
+      (r) => (Number(r.score) || 0) === (Number(r.total) || 10) && (Number(r.total) || 10) > 0
+    ).length;
+
+    const timedList = filteredRecords.filter((r) => typeof r.timeSpent === 'number' && r.timeSpent > 0);
+    const avgTimeSpent =
+      timedList.length > 0
+        ? Math.round(timedList.reduce((s, r) => s + r.timeSpent, 0) / timedList.length)
+        : 0;
+
+    // 科目別詳細統計
+    const subjectBreakdown = ['math', 'japanese', 'english', 'mixed'].map((subj) => {
+      const items = filteredRecords.filter((r) =>
+        subj === 'english' ? isEnglishSubject(r.subject) : r.subject === subj
+      );
+      const count = items.length;
+      const corr = items.reduce((s, r) => s + (Number(r.score) || 0), 0);
+      const tot = items.reduce((s, r) => s + (Number(r.total) || 10), 0);
+      const avg = tot > 0 ? Math.round((corr / tot) * 100) : 0;
+      const bestScore =
+        count > 0
+          ? Math.max(...items.map((r) => Math.round(((Number(r.score) || 0) / (Number(r.total) || 10)) * 100)))
+          : 0;
+      const subjTimed = items.filter((r) => typeof r.timeSpent === 'number' && r.timeSpent > 0);
+      const avgSec =
+        subjTimed.length > 0
+          ? Math.round(subjTimed.reduce((s, r) => s + r.timeSpent, 0) / subjTimed.length)
+          : 0;
+
+      return {
+        subject: subj,
+        label: SUBJECT_META[subj].label,
+        shortLabel: SUBJECT_META[subj].shortLabel,
+        badgeClass: SUBJECT_META[subj].badgeClass,
+        barClass: SUBJECT_META[subj].barClass,
+        count,
+        avg,
+        bestScore,
+        avgSec
+      };
+    });
+
+    // 苦手分野（カテゴリ）ランキング集計
+    const weaknessMap = new Map();
+    filteredRecords.forEach((rec) => {
+      if (!Array.isArray(rec.wrongQuestions)) return;
+      const subjLabel = SUBJECT_META[rec.subject]?.shortLabel || rec.subject || '学習';
+      rec.wrongQuestions.forEach((wq) => {
+        const cat = (wq && wq.category) || '一般';
+        const key = `${subjLabel}：${cat}`;
+        if (!weaknessMap.has(key)) {
+          weaknessMap.set(key, {
+            key,
+            subjectLabel: subjLabel,
+            category: cat,
+            missCount: 0,
+            sampleQuestion: wq.question || ''
+          });
+        }
+        weaknessMap.get(key).missCount += 1;
+      });
+    });
+
+    const topWeaknesses = Array.from(weaknessMap.values())
+      .sort((a, b) => b.missCount - a.missCount)
+      .slice(0, 5);
+
+    // 直近14日間の日別推移（対象学習者・科目フィルターを反映）
+    const dailyTrend = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dayIso = getJstDateOnly(d.toISOString());
+      const dayItems = baseRecords.filter((rec) => {
+        if (selectedLearnerKey !== 'all') {
+          const key = rec.uid || rec.userEmail || rec.userName || 'unknown';
+          if (key !== selectedLearnerKey) return false;
+        }
+        if (statSubjectFilter !== 'all') {
+          if (statSubjectFilter === 'english') {
+            if (!isEnglishSubject(rec.subject)) return false;
+          } else if (rec.subject !== statSubjectFilter) {
+            return false;
+          }
+        }
+        return getJstDateOnly(rec.date || rec.createdAt) === dayIso;
+      });
+
+      const count = dayItems.length;
+      const corr = dayItems.reduce((s, r) => s + (Number(r.score) || 0), 0);
+      const tot = dayItems.reduce((s, r) => s + (Number(r.total) || 10), 0);
+      const rate = tot > 0 ? Math.round((corr / tot) * 100) : 0;
+
+      dailyTrend.push({
+        dayIso,
+        shortDay: `${Number(dayIso.slice(5, 7))}/${Number(dayIso.slice(8, 10))}`,
+        count,
+        rate
+      });
+    }
+
+    return {
+      totalSessions,
+      totalCorrect,
+      totalQuestions,
+      avgPercentage,
+      perfectCount,
+      avgTimeSpent,
+      subjectBreakdown,
+      topWeaknesses,
+      dailyTrend
+    };
+  }, [filteredRecords, baseRecords, selectedLearnerKey, statSubjectFilter]);
 
   const handleHome = () => {
     if (typeof onBackHome === 'function') onBackHome();
@@ -1480,14 +1812,13 @@ export function AdminView({
     }
   };
 
-  // --- 管理画面からの手動AI問題再作成（1日1回制限を受けずいつでも実行可能） ---
   const handleRegenerateWithAi = async () => {
     const effectiveKey =
       apiKeyInput.trim() ||
       (typeof localStorage !== 'undefined' ? localStorage.getItem('gemini_api_key') || '' : '');
 
     if (!effectiveKey) {
-      setGenError('先に上の「Gemini APIキー設定」でAPIキーを入力・保存してください。');
+      setGenError('先に下の「Gemini APIキー設定」でAPIキーを入力・保存してください。');
       return;
     }
 
@@ -1512,7 +1843,6 @@ export function AdminView({
     }
   };
 
-  // --- 再作成した10問で「本日の共通問題」を上書き保存 ---
   const handleApplyPreviewToToday = async () => {
     if (!previewQuestions || previewQuestions.length === 0) return;
     setGenError('');
@@ -1542,7 +1872,6 @@ export function AdminView({
     }
   };
 
-  // --- 本日の問題をリセット（次に誰かが開いたときに1日1回の自動生成をやり直す） ---
   const handleResetTodaySet = async (gradeVal, subjVal) => {
     setGenError('');
     setIsSyncingCloud(true);
@@ -1558,11 +1887,11 @@ export function AdminView({
     }
   };
 
-  const combinedRecords = allRecords.length > 0 ? allRecords : history;
   const todaySetEntries = Object.entries(todaySetsMap);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6">
+    <div className="max-w-5xl mx-auto px-4 py-6">
+      {/* ヘッダー */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-100 text-indigo-800 text-xs font-extrabold mb-1">
@@ -1570,94 +1899,528 @@ export function AdminView({
             保護者・管理者ダッシュボード
           </div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-slate-800">
-            日替わり共通問題管理（{todayStr}）
+            子供たちの学習成績・統計＆問題管理（{todayStr}）
           </h2>
         </div>
 
-        <button
-          type="button"
-          onClick={handleHome}
-          className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-sm rounded-xl transition flex items-center gap-1.5"
-        >
-          <Home className="w-4 h-4" />
-          ホームへ戻る
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={fetchLatestAllRecords}
+            disabled={isRefreshingRecords}
+            className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-xs sm:text-sm rounded-xl transition flex items-center gap-1.5"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshingRecords ? 'animate-spin' : ''}`} />
+            最新データ更新
+          </button>
+
+          <button
+            type="button"
+            onClick={handleHome}
+            className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs sm:text-sm rounded-xl transition flex items-center gap-1.5"
+          >
+            <Home className="w-4 h-4" />
+            ホームへ戻る
+          </button>
+        </div>
       </div>
 
-      {/* 1. Gemini APIキー設定カード */}
+      {/* ===================================================================== */}
+      {/* セクション1：子供たちの個人別成績サマリー（アカウント別比較カード） */}
+      {/* ===================================================================== */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm mb-6">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-          <h3 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
-            <Key className="w-5 h-5 text-amber-500" />
-            Gemini APIキー設定
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <h3 className="text-base sm:text-lg font-extrabold text-slate-800 flex items-center gap-2">
+            <Users className="w-5 h-5 text-indigo-600" />
+            学習者（子供たち）別の成績サマリー
           </h3>
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-extrabold">
-            <Cloud className="w-3.5 h-3.5" />
-            1日1回自動生成 ＆ 管理画面再作成用
+          <span className="text-xs font-bold text-slate-500">
+            カードをクリックすると下の詳細統計・履歴をその子だけに絞り込めます
           </span>
         </div>
-        <p className="text-sm text-slate-600 mb-4 leading-relaxed">
-          毎日その日最初にテストが開かれたとき1回だけAIが問題を作成し、その日中は全ユーザーに同じ問題が出題されます。
-        </p>
 
-        <form onSubmit={handleSave} className="space-y-3">
-          <input
-            type="password"
-            value={apiKeyInput}
-            onChange={(e) => setApiKeyInput(e.target.value)}
-            placeholder="AIzaSy...（Gemini APIキーを入力）"
-            className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
-          />
+        {learnerProfiles.length === 0 ? (
+          <p className="text-sm text-slate-500 py-4">まだテスト実施記録がありません。</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {learnerProfiles.map((learner) => {
+              const isSelected = selectedLearnerKey === learner.key;
+              return (
+                <button
+                  key={learner.key}
+                  type="button"
+                  onClick={() =>
+                    setSelectedLearnerKey(isSelected ? 'all' : learner.key)
+                  }
+                  className={`text-left p-4 sm:p-5 rounded-2xl border-2 transition ${
+                    isSelected
+                      ? 'border-indigo-600 bg-indigo-50/40 shadow-sm'
+                      : 'border-slate-200 bg-slate-50/60 hover:border-indigo-300 hover:bg-white'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-base ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-indigo-100 text-indigo-700'
+                        }`}
+                      >
+                        <User className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-extrabold text-base text-slate-800 flex items-center gap-2">
+                          <span>{learner.name}</span>
+                          {learner.todayTests > 0 && (
+                            <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-800">
+                              今日 {learner.todayTests}回完了
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          最終実施：{formatJstDateTime(learner.latestDate)}
+                        </div>
+                      </div>
+                    </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="submit"
-              disabled={isSavingKey}
-              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-extrabold text-sm rounded-xl transition flex items-center gap-2"
-            >
-              {isSavingKey ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>保存中...</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  <span>クラウドに保存する</span>
-                </>
-              )}
-            </button>
+                    <div className="text-right">
+                      <div className="text-[11px] font-bold text-slate-500">平均正答率</div>
+                      <div className="text-2xl font-black text-indigo-600">
+                        {learner.avgRate}
+                        <span className="text-xs font-bold text-slate-500">%</span>
+                      </div>
+                    </div>
+                  </div>
 
-            {apiKeyInput && (
-              <button
-                type="button"
-                disabled={isSavingKey}
-                onClick={handleClearKey}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-rose-50 disabled:opacity-60 text-slate-700 hover:text-rose-700 font-bold text-sm rounded-xl transition flex items-center gap-1.5"
-              >
-                <Trash2 className="w-4 h-4" />
-                キーを削除
-              </button>
-            )}
+                  {/* ミニ数値指標 */}
+                  <div className="grid grid-cols-3 gap-2 bg-white rounded-xl p-2.5 border border-slate-100 mb-3 text-center">
+                    <div>
+                      <div className="text-[11px] font-bold text-slate-400">テスト回数</div>
+                      <div className="text-sm font-black text-slate-800">
+                        {learner.totalTests}回
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-bold text-slate-400">累計正解</div>
+                      <div className="text-sm font-black text-emerald-700">
+                        {learner.totalCorrect}/{learner.totalQuestions}問
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-bold text-slate-400">平均タイム</div>
+                      <div className="text-sm font-mono font-black text-slate-700">
+                        {learner.avgTimeSec > 0 ? formatSeconds(learner.avgTimeSec) : '-'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 得意・要復習タグ */}
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    {learner.bestSubject && (
+                      <span className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold">
+                        得意：{learner.bestSubject.label}（{learner.bestSubject.rate}%）
+                      </span>
+                    )}
+                    {learner.weakestSubject && (
+                      <span className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-bold">
+                        強化ポイント：{learner.weakestSubject.label}（{learner.weakestSubject.rate}%）
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           </div>
-
-          {savedNotice && (
-            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-extrabold flex items-center gap-2">
-              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>{savedNotice}</span>
-            </div>
-          )}
-
-          {keyError && (
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{keyError}</span>
-            </div>
-          )}
-        </form>
+        )}
       </div>
 
-      {/* 2. 管理画面からの手動AI問題再作成パネル */}
+      {/* ===================================================================== */}
+      {/* セクション2：詳細統計ダッシュボード（科目別・苦手分野・14日間推移・履歴詳細） */}
+      {/* ===================================================================== */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+          <h3 className="text-base sm:text-lg font-extrabold text-slate-800 flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-indigo-600" />
+            詳細パフォーマンス分析 ＆ テスト結果一覧
+          </h3>
+
+          {/* 絞り込みフィルター群 */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-1 text-xs font-extrabold text-slate-500 mr-1">
+              <Filter className="w-3.5 h-3.5" />
+              絞り込み：
+            </div>
+
+            {/* 学習者選択 */}
+            <select
+              value={selectedLearnerKey}
+              onChange={(e) => setSelectedLearnerKey(e.target.value)}
+              className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-extrabold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">全員（合計 {learnerProfiles.length} 名）</option>
+              {learnerProfiles.map((l) => (
+                <option key={l.key} value={l.key}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+
+            {/* 科目選択 */}
+            <select
+              value={statSubjectFilter}
+              onChange={(e) => setStatSubjectFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-extrabold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">全科目</option>
+              <option value="math">算数・思考力</option>
+              <option value="japanese">国語・読解</option>
+              <option value="english">英語（入門・リスニング）</option>
+              <option value="mixed">総合チャレンジ</option>
+            </select>
+
+            {/* 期間選択 */}
+            <select
+              value={statPeriodFilter}
+              onChange={(e) => setStatPeriodFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-extrabold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">全期間</option>
+              <option value="today">今日（{todayStr}）</option>
+              <option value="week">最近7日間</option>
+              <option value="month">今月</option>
+            </select>
+          </div>
+        </div>
+
+        {/* 4つのKPIサマリーカード */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-100">
+            <div className="text-xs font-bold text-slate-500">対象テスト回数</div>
+            <div className="text-2xl font-black text-slate-800 mt-1">
+              {detailedAnalytics.totalSessions}
+              <span className="text-xs font-bold text-slate-500 ml-1">回</span>
+            </div>
+          </div>
+
+          <div className="bg-indigo-50/70 rounded-xl p-3.5 border border-indigo-100">
+            <div className="text-xs font-bold text-indigo-700">平均正答率</div>
+            <div className="text-2xl font-black text-indigo-700 mt-1">
+              {detailedAnalytics.avgPercentage}
+              <span className="text-xs font-bold text-indigo-500 ml-0.5">%</span>
+            </div>
+            <div className="text-[11px] text-indigo-600/80 font-semibold">
+              {detailedAnalytics.totalCorrect} / {detailedAnalytics.totalQuestions} 問正解
+            </div>
+          </div>
+
+          <div className="bg-amber-50/70 rounded-xl p-3.5 border border-amber-100">
+            <div className="text-xs font-bold text-amber-800">満点（100%）達成</div>
+            <div className="text-2xl font-black text-amber-700 mt-1">
+              {detailedAnalytics.perfectCount}
+              <span className="text-xs font-bold text-amber-600 ml-1">回</span>
+            </div>
+          </div>
+
+          <div className="bg-emerald-50/70 rounded-xl p-3.5 border border-emerald-100">
+            <div className="text-xs font-bold text-emerald-800">平均解答時間</div>
+            <div className="text-2xl font-mono font-black text-emerald-700 mt-1">
+              {detailedAnalytics.avgTimeSpent > 0
+                ? formatSeconds(detailedAnalytics.avgTimeSpent)
+                : '--:--'}
+            </div>
+          </div>
+        </div>
+
+        {/* 2カラム分析：左＝科目別達成状況 / 右＝よく間違える苦手分野ランキング */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* 左：科目別パフォーマンス */}
+          <div className="bg-slate-50/70 rounded-2xl p-4 sm:p-5 border border-slate-200/80">
+            <h4 className="text-sm font-extrabold text-slate-800 mb-3 flex items-center gap-1.5">
+              <Target className="w-4 h-4 text-indigo-600" />
+              科目別の正答率・最高点・平均タイム
+            </h4>
+            <div className="space-y-3.5">
+              {detailedAnalytics.subjectBreakdown.map((st) => (
+                <div key={st.subject} className="bg-white p-3 rounded-xl border border-slate-100">
+                  <div className="flex items-center justify-between text-xs font-extrabold mb-1.5">
+                    <span className={`px-2.5 py-0.5 rounded-full ${st.badgeClass}`}>
+                      {st.shortLabel}
+                    </span>
+                    <span className="text-slate-600">
+                      平均 <strong className="text-slate-900 text-sm">{st.avg}%</strong>
+                      <span className="text-slate-400 mx-1.5">|</span>
+                      最高 {st.bestScore}%
+                      <span className="text-slate-400 mx-1.5">|</span>
+                      {st.count}回
+                    </span>
+                  </div>
+                  <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${st.barClass}`}
+                      style={{ width: `${st.avg}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 右：苦手分野ランキング（誤答分析） */}
+          <div className="bg-slate-50/70 rounded-2xl p-4 sm:p-5 border border-slate-200/80">
+            <h4 className="text-sm font-extrabold text-slate-800 mb-3 flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              よく間違えている苦手分野（誤答集計）
+            </h4>
+
+            {detailedAnalytics.topWeaknesses.length === 0 ? (
+              <div className="bg-white rounded-xl p-6 border border-slate-100 text-center text-xs font-bold text-slate-500">
+                対象期間の誤答データはありません（全問正解または未実施）。
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {detailedAnalytics.topWeaknesses.map((w, idx) => (
+                  <div
+                    key={w.key}
+                    className="bg-white p-3 rounded-xl border border-slate-100 flex items-start justify-between gap-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="w-5 h-5 rounded-md bg-rose-100 text-rose-700 text-xs font-black flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <span className="text-xs font-extrabold text-slate-800 truncate">
+                          {w.key}
+                        </span>
+                      </div>
+                      {w.sampleQuestion && (
+                        <p className="text-[11px] text-slate-500 truncate pl-6">
+                          例：{w.sampleQuestion}
+                        </p>
+                      )}
+                    </div>
+                    <span className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 text-xs font-extrabold shrink-0">
+                      {w.missCount}問ミス
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 直近14日間の日別学習推移チャート */}
+        <div className="bg-slate-50/70 rounded-2xl p-4 sm:p-5 border border-slate-200/80 mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h4 className="text-sm font-extrabold text-slate-800 flex items-center gap-1.5">
+              <Calendar className="w-4 h-4 text-emerald-600" />
+              直近14日間の学習実施回数と正答率推移
+            </h4>
+            <span className="text-[11px] font-bold text-slate-500">
+              棒の高さ＝正答率%（上部の数字＝実施回数）
+            </span>
+          </div>
+
+          <div className="grid grid-cols-14 gap-1.5 items-end h-32 pt-5 px-1 bg-white rounded-xl border border-slate-100">
+            {detailedAnalytics.dailyTrend.map((day) => {
+              const barHeight = day.count > 0 ? Math.max(18, day.rate) : 6;
+              return (
+                <div
+                  key={day.dayIso}
+                  title={`${day.dayIso}: ${day.count}回実施 / 正答率 ${day.rate}%`}
+                  className="flex flex-col items-center justify-end h-full pb-1.5"
+                >
+                  <span className="text-[10px] font-extrabold text-indigo-700 mb-1">
+                    {day.count > 0 ? `${day.count}回` : ''}
+                  </span>
+                  <div
+                    className={`w-full max-w-[22px] rounded-t-md transition-all ${
+                      day.count === 0
+                        ? 'bg-slate-200'
+                        : day.rate >= 80
+                        ? 'bg-emerald-500'
+                        : day.rate >= 60
+                        ? 'bg-indigo-500'
+                        : 'bg-amber-500'
+                    }`}
+                    style={{ height: `${barHeight}%` }}
+                  />
+                  <span className="text-[9px] font-bold text-slate-400 mt-1">
+                    {day.shortDay}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* テスト結果履歴一覧（行クリックで間違えた問題の詳細を展開表示） */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-extrabold text-slate-800">
+              テスト実施履歴一覧（該当 {filteredRecords.length} 件・行をクリックで間違えた問題を確認）
+            </h4>
+          </div>
+
+          {filteredRecords.length === 0 ? (
+            <p className="text-sm text-slate-500 py-6 text-center bg-slate-50 rounded-xl">
+              条件に一致する学習データがありません。
+            </p>
+          ) : (
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-xs font-extrabold text-slate-500">
+                    <th className="py-3 px-3">実施日時（JST）</th>
+                    <th className="py-3 px-3">学習者</th>
+                    <th className="py-3 px-3">科目</th>
+                    <th className="py-3 px-3">対象</th>
+                    <th className="py-3 px-3">スコア（正答率）</th>
+                    <th className="py-3 px-3">所要時間</th>
+                    <th className="py-3 px-3 text-right">誤答詳細</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredRecords.slice(0, 50).map((rec, idx) => {
+                    const rowId = rec.id || `row_${idx}`;
+                    const isExpanded = expandedRecordId === rowId;
+                    const recMeta = SUBJECT_META[rec.subject] || SUBJECT_META.math;
+                    const score = Number(rec.score ?? 0);
+                    const total = Number(rec.total ?? 10);
+                    const pct = total > 0 ? Math.round((score / total) * 100) : 0;
+                    const wrongList = Array.isArray(rec.wrongQuestions) ? rec.wrongQuestions : [];
+
+                    return (
+                      <React.Fragment key={rowId}>
+                        <tr
+                          onClick={() =>
+                            setExpandedRecordId(isExpanded ? null : rowId)
+                          }
+                          className="hover:bg-indigo-50/40 cursor-pointer transition"
+                        >
+                          <td className="py-3 px-3 text-xs font-mono text-slate-500 whitespace-nowrap">
+                            {formatJstDateTime(rec.date || rec.createdAt)}
+                          </td>
+                          <td className="py-3 px-3 font-extrabold text-slate-800 whitespace-nowrap">
+                            {rec.userName || rec.displayName || 'メンバー'}
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-xs font-extrabold ${recMeta.badgeClass}`}
+                            >
+                              {recMeta.label}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-xs font-bold text-slate-600 whitespace-nowrap">
+                            {isEnglishSubject(rec.subject)
+                              ? '全学年共通'
+                              : `${rec.grade || '2'}年生`}
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <span className="font-black text-slate-800">
+                              {score} / {total}
+                            </span>
+                            <span
+                              className={`ml-2 px-2 py-0.5 rounded-md text-xs font-extrabold ${
+                                pct >= 80
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : pct >= 60
+                                  ? 'bg-indigo-100 text-indigo-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {pct}%
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-xs font-mono text-slate-600 whitespace-nowrap">
+                            {typeof rec.timeSpent === 'number' && rec.timeSpent > 0
+                              ? formatSeconds(rec.timeSpent)
+                              : '-'}
+                          </td>
+                          <td className="py-3 px-3 text-right whitespace-nowrap">
+                            {wrongList.length > 0 ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-extrabold text-rose-600">
+                                <span>{wrongList.length}問ミス</span>
+                                {isExpanded ? (
+                                  <ChevronUp className="w-4 h-4" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4" />
+                                )}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-xs font-extrabold text-emerald-600">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>全問正解</span>
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+
+                        {/* 展開された誤答問題リスト */}
+                        {isExpanded && (
+                          <tr className="bg-slate-50/90">
+                            <td colSpan={7} className="p-4">
+                              {wrongList.length === 0 ? (
+                                <p className="text-xs font-bold text-emerald-700">
+                                  この回は全問正解です！
+                                </p>
+                              ) : (
+                                <div className="space-y-2.5">
+                                  <div className="text-xs font-extrabold text-slate-700">
+                                    まちがえた問題一覧（{wrongList.length}問）：
+                                  </div>
+                                  {wrongList.map((wq, wIdx) => (
+                                    <div
+                                      key={wq.id || wIdx}
+                                      className="bg-white p-3 rounded-xl border border-rose-200 text-xs"
+                                    >
+                                      <div className="flex items-center justify-between gap-2 mb-1">
+                                        <span className="font-extrabold text-rose-700">
+                                          分野：{wq.category || '一般'}
+                                        </span>
+                                        {wq.audioText && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              speakEnglishText(wq.audioText, 0.85);
+                                            }}
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold"
+                                          >
+                                            <Volume2 className="w-3 h-3" />
+                                            音声確認
+                                          </button>
+                                        )}
+                                      </div>
+                                      <p className="font-bold text-slate-800 mb-1">
+                                        問題：{wq.question}
+                                      </p>
+                                      <p className="font-extrabold text-emerald-700 mb-1">
+                                        正解：{wq.answer}
+                                      </p>
+                                      {wq.explanation && (
+                                        <p className="text-slate-500">解説：{wq.explanation}</p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ===================================================================== */}
+      {/* セクション3：管理画面からの手動AI問題再作成パネル */}
+      {/* ===================================================================== */}
       <div className="bg-white rounded-2xl p-6 border-2 border-indigo-200 shadow-sm mb-6">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <h3 className="text-base sm:text-lg font-extrabold text-slate-800 flex items-center gap-2">
@@ -1674,7 +2437,6 @@ export function AdminView({
           通常は1日1回のみ作成されますが、ここからはいつでも新しい問題（10問）を再作成して、今日の共通問題を上書き更新できます。
         </p>
 
-        {/* 科目・学年・テーマ選択フォーム */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block text-xs font-extrabold text-slate-600 mb-1.5">
@@ -1748,7 +2510,6 @@ export function AdminView({
           </button>
         </div>
 
-        {/* エラー・完了メッセージ */}
         {genError && (
           <div className="mt-4 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-start gap-2">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -1763,7 +2524,6 @@ export function AdminView({
           </div>
         )}
 
-        {/* 本日（YYYY-MM-DD）すでに作成済みの共通問題セット一覧 */}
         {todaySetEntries.length > 0 && (
           <div className="mt-5 pt-5 border-t border-slate-100">
             <h4 className="text-xs font-extrabold text-slate-600 mb-2.5">
@@ -1799,7 +2559,6 @@ export function AdminView({
           </div>
         )}
 
-        {/* 生成された問題のプレビュー一覧 */}
         {previewQuestions.length > 0 && (
           <div className="mt-6 pt-6 border-t border-slate-200">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -1875,55 +2634,79 @@ export function AdminView({
         )}
       </div>
 
-      {/* 3. 全体の学習実施サマリー */}
+      {/* ===================================================================== */}
+      {/* セクション4：Gemini APIキー設定カード */}
+      {/* ===================================================================== */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-        <h3 className="text-base font-extrabold text-slate-800 mb-4">
-          登録済み学習データ一覧（合計 {combinedRecords.length} 件）
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h3 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+            <Key className="w-5 h-5 text-amber-500" />
+            Gemini APIキー設定
+          </h3>
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-extrabold">
+            <Cloud className="w-3.5 h-3.5" />
+            1日1回自動生成 ＆ 管理画面再作成用
+          </span>
+        </div>
+        <p className="text-sm text-slate-600 mb-4 leading-relaxed">
+          毎日その日最初にテストが開かれたとき1回だけAIが問題を作成し、その日中は全ユーザーに同じ問題が出題されます。
+        </p>
 
-        {combinedRecords.length === 0 ? (
-          <p className="text-sm text-slate-500 py-4">まだ学習データがありません。</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-xs font-extrabold text-slate-500">
-                  <th className="py-2.5 px-3">日付</th>
-                  <th className="py-2.5 px-3">学習者</th>
-                  <th className="py-2.5 px-3">科目</th>
-                  <th className="py-2.5 px-3">対象</th>
-                  <th className="py-2.5 px-3">スコア</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {combinedRecords.slice(0, 30).map((rec, idx) => {
-                  const recMeta = SUBJECT_META[rec.subject] || SUBJECT_META.math;
-                  return (
-                    <tr key={rec.id || idx} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 text-xs text-slate-500">
-                        {String(rec.date || rec.createdAt || '').slice(0, 10)}
-                      </td>
-                      <td className="py-2.5 px-3 font-bold text-slate-700">
-                        {rec.userName || rec.displayName || 'メンバー'}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${recMeta.badgeClass}`}>
-                          {recMeta.label}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-xs font-bold text-slate-600">
-                        {isEnglishSubject(rec.subject) ? '全学年共通' : `${rec.grade || '2'}年生`}
-                      </td>
-                      <td className="py-2.5 px-3 font-extrabold text-slate-800">
-                        {rec.score ?? 0} / {rec.total ?? 10}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <form onSubmit={handleSave} className="space-y-3">
+          <input
+            type="password"
+            value={apiKeyInput}
+            onChange={(e) => setApiKeyInput(e.target.value)}
+            placeholder="AIzaSy...（Gemini APIキーを入力）"
+            className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+          />
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="submit"
+              disabled={isSavingKey}
+              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-extrabold text-sm rounded-xl transition flex items-center gap-2"
+            >
+              {isSavingKey ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>保存中...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>クラウドに保存する</span>
+                </>
+              )}
+            </button>
+
+            {apiKeyInput && (
+              <button
+                type="button"
+                disabled={isSavingKey}
+                onClick={handleClearKey}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-rose-50 disabled:opacity-60 text-slate-700 hover:text-rose-700 font-bold text-sm rounded-xl transition flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                キーを削除
+              </button>
+            )}
           </div>
-        )}
+
+          {savedNotice && (
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-extrabold flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{savedNotice}</span>
+            </div>
+          )}
+
+          {keyError && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{keyError}</span>
+            </div>
+          )}
+        </form>
       </div>
     </div>
   );
