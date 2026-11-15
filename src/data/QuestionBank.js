@@ -218,9 +218,9 @@ export class QuestionBank {
   static UYGHUR = [
     {
       id: "u_1", category: "単語・意味", categoryName: "ウイグル語",
-      question: "ウイグル語の「ئالما (Alma)」の日本語の意味はどれですか。",
-      options: ["りんご", "みかん", "ぶどう", "バナナ"], correctIndex: 0,
-      explanation: "「ئالما (Alma)」はウイグル語で「りんご」を意味します。"
+      question: "ウイグル語の「بانان (Banan)」の日本語の意味はどれですか。",
+      options: ["りんご", "みかん", "ぶどう", "バナナ"], correctIndex: 3,
+      explanation: "「بانان (Banan)」はウイグル語で「バナナ」を意味します。"
     },
     {
       id: "u_2", category: "日常の挨拶", categoryName: "ウイグル語",
