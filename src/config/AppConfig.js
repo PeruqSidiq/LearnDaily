@@ -1,48 +1,62 @@
-export class AppConfig {
-  static ADMIN_EMAIL = 'peruqsidiq@gmail.com';
-  static APP_ID = typeof globalThis.__app_id !== 'undefined' && globalThis.__app_id
-    ? globalThis.__app_id
-    : 'yotsuya-otsuka-prep-app';
-  static LOCAL_HISTORY_KEY = 'learn_daily_family_history';
-  static LOCAL_GEMINI_KEY = 'learndaily_gemini_api_key';
+// src/config/AppConfig.js
+// アプリケーション全体の設定・定数管理クラス
 
+export class AppConfig {
+  // =========================================================================
+  // 1. アプリケーション基本情報
+  // =========================================================================
   static APP_TITLE = '未来を生き抜く 思考力トレーニング';
   static APP_SUBTITLE = '毎日1回の習慣で、自ら考え・伸び続ける頭を育てる';
-  static APP_BADGE_CHAR = '未';
+  static APP_ICON = '未';
 
-  static getFirebaseConfig() {
-    if (typeof globalThis.__firebase_config !== 'undefined' && globalThis.__firebase_config) {
-      try {
-        return typeof globalThis.__firebase_config === 'string'
-          ? JSON.parse(globalThis.__firebase_config)
-          : globalThis.__firebase_config;
-      } catch (e) {
-        console.warn("Invalid __firebase_config JSON, using default config:", e);
-      }
-    }
-    return {
-      apiKey: "AIzaSyBbqWjybJrRu4VR90CJohRk-QsbFEFlrj8",
-      authDomain: "learndaily-69355.firebaseapp.com",
-      projectId: "learndaily-69355",
-      storageBucket: "learndaily-69355.firebasestorage.app",
-      messagingSenderId: "161457830120",
-      appId: "1:161457830120:web:d8465efae2b3e95c12f15d",
-      measurementId: "G-RYTSDGW0GP"
-    };
-  }
+  // =========================================================================
+  // 2. 保護者・管理者設定
+  // =========================================================================
+  static ADMIN_EMAIL = 'peruqsidiq@gmail.com';
+  static FIRESTORE_COLLECTION = 'quiz_records';
 
-  static SUBJECT_LABELS = {
-    math: '算数思考トレーニング',
-    japanese: '国語ことばトレーニング',
-    english: '英語入門トレーニング',
-    uyghur: 'ウイグル語トレーニング',
-    daily: '本日の思考力チャレンジ',
-    weakness: '🔥 弱点克服トレーニング',
-    combined: '算国総合思考チャレンジ'
+  // =========================================================================
+  // 3. Firebase 接続設定（Vercel環境変数または直接入力用）
+  // =========================================================================
+  static FIREBASE_CONFIG = {
+    apiKey:
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || '',
+    authDomain:
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) || '',
+    projectId:
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_PROJECT_ID) || '',
+    storageBucket:
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) || '',
+    messagingSenderId:
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || '',
+    appId:
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_APP_ID) || ''
   };
 
-  static RADAR_CATEGORIES = [
-    '算数計算', '特殊算', '図形', '思考力',
-    '国語漢字', '語彙文法', '読解力', '英語', 'ウイグル語'
+  // =========================================================================
+  // 4. 科目ラベル定義（英語科目を含む）
+  // =========================================================================
+  static SUBJECT_LABELS = {
+    math: '算数・思考力',
+    japanese: '国語・読解＆語彙',
+    english: '英語（English）入門',
+    mixed: '総合思考力チャレンジ'
+  };
+
+  // =========================================================================
+  // 5. 分析・レーダーチャート用項目定義
+  // =========================================================================
+  static ANALYTICS_CATEGORIES = [
+    { key: 'math', label: '算数力' },
+    { key: 'japanese', label: '国語力' },
+    { key: 'english', label: '英語力' },
+    { key: 'mixed', label: '総合力' }
   ];
+
+  // =========================================================================
+  // 6. デフォルトAIモデル設定（Gemini API）
+  // =========================================================================
+  static GEMINI_MODEL = 'gemini-2.5-flash';
 }
+
+export default AppConfig;
