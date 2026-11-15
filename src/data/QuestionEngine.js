@@ -23,7 +23,7 @@ export class QuestionEngine {
     return arr;
   }
 
-  /**
+/**
    * 問題オブジェクトの形式を統一し、選択肢をシャッフルする
    */
   static normalizeQuestions(questions, subject, count = 10) {
@@ -31,6 +31,8 @@ export class QuestionEngine {
     return selected.map((q, index) => ({
       id: q.id || `${subject}_${Date.now()}_${index + 1}`,
       subject,
+      type: q.type || 'standard',
+      audioText: q.audioText || '',
       category: q.category || '思考トレーニング',
       question: q.question,
       choices: this.shuffle(q.choices || []),
