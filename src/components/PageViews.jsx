@@ -1,7 +1,8 @@
 // src/components/PageViews.jsx
-// 全5画面ビュー（ホーム・テスト実行・結果・学習履歴・保護者管理[Firestoreクラウド同期対応]）
+// 全5画面ビュー（ホーム・テスト実行・結果・学習履歴・保護者管理[APIキー＆問題クラウド同期対応]）
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import {
   BookOpen,
   Play,
@@ -1313,7 +1314,7 @@ export function HistoryView({
 }
 
 // =========================================================================
-// 5. 保護者・管理者画面（AdminView - Gemini AI問題再作成＆Firestoreクラウド保存）
+// 5. 保護者・管理者画面（AdminView - APIキー＆AI問題 Firestoreクラウド同期対応）
 // =========================================================================
 export function AdminView({
   db,
@@ -1332,7 +1333,9 @@ export function AdminView({
     customApiKey ||
       (typeof localStorage !== 'undefined' ? localStorage.getItem('gemini_api_key') || '' : '')
   );
-  const [savedNotice, setSavedNotice] = useState(false);
+  const [isSavingKey, setIsSavingKey] = useState(false);
+  const [savedNotice, setSavedNotice] = useState('');
+  const [keyError, setKeyError] = useState('');
 
   // --- AI問題再作成（ジェネレーター）用ステート ---
   const [genSubject, setGenSubject] = useState('english');
@@ -1347,22 +1350,48 @@ export function AdminView({
     QuestionEngine.getAllCustomAiSetsFromLocal()
   );
 
-  // 管理画面表示時にFirestoreから最新のカスタム問題一覧を同期
+  const adminEmail = AppConfig?.ADMIN_EMAIL || 'peruqsidiq@gmail.com';
+  const hasAdminAccess = isAdmin || user?.email === adminEmail;
+
+  // 親コンポーネント(App.jsx)がFirestoreからAPIキーを読み込んだら入力欄へ自動反映
   useEffect(() => {
+    if (customApiKey) {
+      setApiKeyInput(customApiKey);
+    }
+  }, [customApiKey]);
+
+  // 管理画面表示時にFirestoreから最新のカスタム問題一覧＆APIキーを同期
+  useEffect(() => {
+    if (!hasAdminAccess) return;
     if (db) QuestionEngine.setFirestoreDb(db);
     let mounted = true;
+
     QuestionEngine.syncAllCustomAiSetsFromFirestore().then((synced) => {
       if (mounted && synced) {
         setActiveCustomSets(synced);
       }
     });
+
+    if (db) {
+      getDoc(doc(db, 'admin_settings', 'gemini_config'))
+        .then((snap) => {
+          if (mounted && snap.exists()) {
+            const cloudKey = String(snap.data()?.apiKey || '').trim();
+            if (cloudKey) {
+              setApiKeyInput(cloudKey);
+              if (typeof localStorage !== 'undefined') {
+                localStorage.setItem('gemini_api_key', cloudKey);
+              }
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
     return () => {
       mounted = false;
     };
-  }, [db]);
-
-  const adminEmail = AppConfig?.ADMIN_EMAIL || 'peruqsidiq@gmail.com';
-  const hasAdminAccess = isAdmin || user?.email === adminEmail;
+  }, [db, hasAdminAccess]);
 
   const handleHome = () => {
     if (typeof onBackHome === 'function') onBackHome();
@@ -1393,29 +1422,68 @@ export function AdminView({
     );
   }
 
-  const handleSave = (e) => {
-    e.preventDefault();
-    const trimmed = apiKeyInput.trim();
+  const persistKeyEverywhere = async (trimmedKey) => {
     if (typeof localStorage !== 'undefined') {
-      if (trimmed) localStorage.setItem('gemini_api_key', trimmed);
+      if (trimmedKey) localStorage.setItem('gemini_api_key', trimmedKey);
       else localStorage.removeItem('gemini_api_key');
     }
-    if (typeof onSaveApiKey === 'function') onSaveApiKey(trimmed);
-    if (typeof saveApiKey === 'function') saveApiKey(trimmed);
-
-    setSavedNotice(true);
-    setTimeout(() => setSavedNotice(false), 3000);
+    const saver = onSaveApiKey || saveApiKey;
+    if (typeof saver === 'function') {
+      await saver(trimmedKey);
+    } else if (db) {
+      const ref = doc(db, 'admin_settings', 'gemini_config');
+      if (trimmedKey) {
+        await setDoc(ref, {
+          apiKey: trimmedKey,
+          updatedAt: new Date().toISOString(),
+          updatedBy: user?.email || adminEmail
+        });
+      } else {
+        await deleteDoc(ref);
+      }
+    }
   };
 
-  const handleClearKey = () => {
-    setApiKeyInput('');
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem('gemini_api_key');
+  const handleSave = async (e) => {
+    e.preventDefault();
+    const trimmed = apiKeyInput.trim();
+    setKeyError('');
+    setSavedNotice('');
+    setIsSavingKey(true);
+
+    try {
+      await persistKeyEverywhere(trimmed);
+      setSavedNotice(
+        trimmed
+          ? 'APIキーを管理者専用Firestoreに保存しました！別のPCやスマホからも自動読み込みされます。'
+          : '保存済みのAPIキーを削除しました。'
+      );
+      setTimeout(() => setSavedNotice(''), 5000);
+    } catch (err) {
+      console.error('APIキーのFirestore保存エラー:', err);
+      setKeyError(
+        `クラウド保存に失敗しました（${err?.message || 'Firestoreルールを確認してください'}）。このブラウザには一時保存されています。`
+      );
+    } finally {
+      setIsSavingKey(false);
     }
-    if (typeof onSaveApiKey === 'function') onSaveApiKey('');
-    if (typeof saveApiKey === 'function') saveApiKey('');
-    setSavedNotice(true);
-    setTimeout(() => setSavedNotice(false), 3000);
+  };
+
+  const handleClearKey = async () => {
+    setApiKeyInput('');
+    setKeyError('');
+    setSavedNotice('');
+    setIsSavingKey(true);
+
+    try {
+      await persistKeyEverywhere('');
+      setSavedNotice('クラウドとブラウザからAPIキーを削除しました。');
+      setTimeout(() => setSavedNotice(''), 4000);
+    } catch (err) {
+      setKeyError(`削除中にエラーが発生しました（${err?.message || '権限エラー'}）`);
+    } finally {
+      setIsSavingKey(false);
+    }
   };
 
   // --- Gemini APIで問題をAI再作成 ---
@@ -1523,14 +1591,20 @@ export function AdminView({
         </button>
       </div>
 
-      {/* 1. Gemini APIキー設定カード */}
+      {/* 1. Gemini APIキー設定カード（管理者専用Firestoreクラウド同期対応） */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm mb-6">
-        <h3 className="text-base font-extrabold text-slate-800 mb-2 flex items-center gap-2">
-          <Key className="w-5 h-5 text-amber-500" />
-          Gemini APIキー設定
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h3 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+            <Key className="w-5 h-5 text-amber-500" />
+            Gemini APIキー設定
+          </h3>
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-extrabold">
+            <Cloud className="w-3.5 h-3.5" />
+            管理者専用クラウド自動同期
+          </span>
+        </div>
         <p className="text-sm text-slate-600 mb-4 leading-relaxed">
-          APIキーを登録すると、下の「AI問題ジェネレーター」からいつでも新しい問題セットを再作成できます。
+          保存した API キーは管理者アカウント（{adminEmail}）専用の Firestore ドキュメントに安全に保管され、別の PC やスマホからログインした際も自動読み込みされます。
         </p>
 
         <form onSubmit={handleSave} className="space-y-3">
@@ -1545,30 +1619,48 @@ export function AdminView({
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="submit"
-              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm rounded-xl transition flex items-center gap-2"
+              disabled={isSavingKey}
+              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-extrabold text-sm rounded-xl transition flex items-center gap-2"
             >
-              <Save className="w-4 h-4" />
-              APIキーを保存する
+              {isSavingKey ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>クラウドへ保存中...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>クラウドに保存する</span>
+                </>
+              )}
             </button>
 
             {apiKeyInput && (
               <button
                 type="button"
+                disabled={isSavingKey}
                 onClick={handleClearKey}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 font-bold text-sm rounded-xl transition flex items-center gap-1.5"
+                className="px-4 py-2.5 bg-slate-100 hover:bg-rose-50 disabled:opacity-60 text-slate-700 hover:text-rose-700 font-bold text-sm rounded-xl transition flex items-center gap-1.5"
               >
                 <Trash2 className="w-4 h-4" />
                 キーを削除
               </button>
             )}
-
-            {savedNotice && (
-              <span className="inline-flex items-center gap-1 text-sm font-extrabold text-emerald-600">
-                <Check className="w-4 h-4" />
-                APIキーを保存しました！
-              </span>
-            )}
           </div>
+
+          {savedNotice && (
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-extrabold flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{savedNotice}</span>
+            </div>
+          )}
+
+          {keyError && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{keyError}</span>
+            </div>
+          )}
         </form>
       </div>
 
