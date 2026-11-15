@@ -20,6 +20,9 @@ export class QuestionEngine {
       const pool = isGrade2 ? QuestionBank.JAPANESE_G2 : QuestionBank.JAPANESE_G5;
       return QuizUtils.shuffleArray(pool).slice(0, 10).map(QuizUtils.randomizeQuestionOptions);
     }
+    if (subject === 'english') {
+      return QuizUtils.shuffleArray(QuestionBank.ENGLISH).slice(0, 10).map(QuizUtils.randomizeQuestionOptions);
+    }
     if (subject === 'uyghur') {
       return QuizUtils.shuffleArray(QuestionBank.UYGHUR).slice(0, 10).map(QuizUtils.randomizeQuestionOptions);
     }
@@ -45,11 +48,11 @@ export class QuestionEngine {
     }
 
     if (apiKey) {
-      const systemPrompt = `あなたは四谷大塚の入塾テスト・中学受験の算数と国語の専門講師です。
-${gradeLabel}対象の四谷大塚入塾テストレベルの4択問題を生成してください。
+      const systemPrompt = `あなたは小学生がこれからの未来を生き抜くための「思考力・論理力・表現力」を育てる算数と国語の専門講師です。
+${gradeLabel}対象の、暗記ではなく自分の頭で考えて解く良質な4択問題を生成してください。
 毎回異なる数値・題材を使い、レスポンスは必ず指定されたJSON配列のみで返してください。`;
 
-      const userQuery = `四谷大塚の入塾テスト対策として、${gradeLabel}向けの算数10問と国語10問（合計20問）の完全新作テスト問題を作成してください（本日の日付: ${QuizUtils.getTodayDateString()}、回数シード: ${attemptOffset}）。`;
+      const userQuery = `小学生の思考力と地頭力を伸ばすトレーニングとして、${gradeLabel}向けの算数10問と国語10問（合計20問）の完全新作問題を作成してください（本日の日付: ${QuizUtils.getTodayDateString()}、回数シード: ${attemptOffset}）。`;
       const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
 
       const payload = {
