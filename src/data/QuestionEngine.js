@@ -1,10 +1,12 @@
 // src/data/QuestionEngine.js
-// 全学年共通の英語入門テスト（通常＋リスニング対応）＆学年別（算数・国語・総合）統合出題エンジン
+// 全学年共通の英語入門テスト（通常＋リスニング対応）＆学年別（算数・国語・総合）＆AI再作成統合エンジン
 
 import { QuestionBank } from './QuestionBank';
 import { MathGenerator } from './MathGenerator';
 import { QuizUtils } from '../utils/QuizUtils';
 import { AppConfig } from '../config/AppConfig';
+
+const CUSTOM_AI_STORAGE_KEY = 'learndaily_custom_ai_sets';
 
 export class QuestionEngine {
   /**
@@ -21,6 +23,87 @@ export class QuestionEngine {
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
     return arr;
+  }
+
+  /**
+   * 管理画面で保存するカスタム問題セット用のストレージキーを生成
+   */
+  static getCustomSetKey(grade, subject) {
+    if (subject === 'english' || subject === 'english_listening') {
+      return subject;
+    }
+    return `${subject}_${String(grade || '2')}`;
+  }
+
+  /**
+   * AIが再作成した問題セットをローカルストレージに保存（本番テストへ適用）
+   */
+  static saveCustomAiQuestions(grade, subject, questions) {
+    if (typeof localStorage === 'undefined' || !Array.isArray(questions)) return;
+    try {
+      const raw = localStorage.getItem(CUSTOM_AI_STORAGE_KEY);
+      const store = raw ? JSON.parse(raw) : {};
+      const key = this.getCustomSetKey(grade, subject);
+      store[key] = {
+        updatedAt: new Date().toISOString(),
+        grade: String(grade),
+        subject,
+        questions
+      };
+      localStorage.setItem(CUSTOM_AI_STORAGE_KEY, JSON.stringify(store));
+    } catch (e) {
+      console.error('カスタムAI問題の保存エラー:', e);
+    }
+  }
+
+  /**
+   * 適用中のカスタムAI問題セットを取得
+   */
+  static getCustomAiQuestions(grade, subject) {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(CUSTOM_AI_STORAGE_KEY);
+      if (!raw) return null;
+      const store = JSON.parse(raw);
+      const key = this.getCustomSetKey(grade, subject);
+      return store[key] || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 適用中のカスタムAI問題セットをすべて取得（管理画面の一覧表示用）
+   */
+  static getAllCustomAiSets() {
+    if (typeof localStorage === 'undefined') return {};
+    try {
+      const raw = localStorage.getItem(CUSTOM_AI_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * 適用中のカスタムAI問題セットを解除（標準出題に戻す）
+   */
+  static clearCustomAiQuestions(grade, subject) {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      if (!subject) {
+        localStorage.removeItem(CUSTOM_AI_STORAGE_KEY);
+        return;
+      }
+      const raw = localStorage.getItem(CUSTOM_AI_STORAGE_KEY);
+      if (!raw) return;
+      const store = JSON.parse(raw);
+      const key = this.getCustomSetKey(grade, subject);
+      delete store[key];
+      localStorage.setItem(CUSTOM_AI_STORAGE_KEY, JSON.stringify(store));
+    } catch (e) {
+      console.error('カスタムAI問題の解除エラー:', e);
+    }
   }
 
   /**
@@ -46,7 +129,6 @@ export class QuestionEngine {
 
   /**
    * 英語（English）入門問題を取得（2年生・5年生共通）
-   * 通常問題（単語・フレーズ）とリスニング問題がバランスよく出題されます
    */
   static getEnglishQuiz(count = 10) {
     const pool =
@@ -57,7 +139,6 @@ export class QuestionEngine {
     const standardPool = pool.filter((q) => q.type !== 'listening' && !q.audioText);
     const listeningPool = pool.filter((q) => q.type === 'listening' || Boolean(q.audioText));
 
-    // リスニング問題が含まれている場合は、10問中3問をリスニング・7問を通常問題にしてバランスよく出題
     if (listeningPool.length > 0 && standardPool.length > 0 && count >= 4) {
       const listeningCount = Math.min(3, listeningPool.length);
       const standardCount = count - listeningCount;
@@ -70,7 +151,7 @@ export class QuestionEngine {
   }
 
   /**
-   * 英語リスニング問題のみを抽出して取得（リスニング集中モード用）
+   * 英語リスニング問題のみを抽出して取得
    */
   static getEnglishListeningQuiz(count = 10) {
     const pool =
@@ -123,9 +204,13 @@ export class QuestionEngine {
   }
 
   /**
-   * Gemini API を使って新しい問題を自動生成（APIキー設定時のみ動作）
+   * Gemini API を使って新しい問題を自動生成（管理画面からのテーマ指定にも対応）
    */
-  static async fetchQuestionsFromGemini(grade, subject, apiKey, count = 10) {
+  static async fetchQuestionsFromGemini(grade, subject, apiKey, count = 10, customTopic = '') {
+    if (!apiKey || !apiKey.trim()) {
+      throw new Error('Gemini APIキーが設定されていません。');
+    }
+
     const isEnglish = subject === 'english' || subject === 'english_listening';
     const subjectInstruction =
       subject === 'english_listening'
@@ -138,8 +223,13 @@ export class QuestionEngine {
         ? `小学${grade}年生向けに、自ら考え筋道を立てて解く思考力算数の問題を${count}問作成してください。`
         : `小学${grade}年生向けに、算数と国語の総合思考力問題を${count}問作成してください。`;
 
+    const topicConstraint =
+      customTopic && customTopic.trim()
+        ? `\n【保護者・管理者からの追加テーマ指定】\n「${customTopic.trim()}」の内容や傾向を重点的に取り入れて問題を作成してください。`
+        : '';
+
     const prompt = `あなたは子どもの未来を生き抜く思考力と語学力を育てる教育トレーナーです。
-${subjectInstruction}
+${subjectInstruction}${topicConstraint}
 
 必ず以下のJSON配列形式のみを出力してください（マークダウン記法や余分な説明文は不要です）：
 [
@@ -156,7 +246,7 @@ ${subjectInstruction}
 
     const model = (AppConfig && AppConfig.GEMINI_MODEL) || 'gemini-2.5-flash';
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
-      apiKey
+      apiKey.trim()
     )}`;
 
     const response = await fetch(endpoint, {
@@ -165,14 +255,14 @@ ${subjectInstruction}
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.8,
+          temperature: 0.85,
           responseMimeType: 'application/json'
         }
       })
     });
 
     if (!response.ok) {
-      throw new Error(`Gemini API Error: ${response.status}`);
+      throw new Error(`Gemini APIエラー (ステータス: ${response.status})。APIキーが正しいか確認してください。`);
     }
 
     const data = await response.json();
@@ -180,7 +270,7 @@ ${subjectInstruction}
     const parsed = JSON.parse(rawText);
 
     if (!Array.isArray(parsed) || parsed.length === 0) {
-      throw new Error('Invalid Gemini response format');
+      throw new Error('AIからの問題データの解析に失敗しました。もう一度お試しください。');
     }
 
     const normalizedSubject = isEnglish ? 'english' : subject;
@@ -192,12 +282,21 @@ ${subjectInstruction}
    */
   static async generateQuiz(grade, subject, customApiKey = '', seedOffset = 0) {
     const targetSubject = subject || 'math';
+
+    // 1. 管理画面で「AI再作成して適用（保存）」されたカスタム問題セットがある場合は優先出題
+    const savedCustom = this.getCustomAiQuestions(grade, targetSubject);
+    if (savedCustom && Array.isArray(savedCustom.questions) && savedCustom.questions.length > 0) {
+      const normalizedSubject =
+        targetSubject === 'english_listening' ? 'english' : targetSubject;
+      return this.normalizeQuestions(savedCustom.questions, normalizedSubject, 10);
+    }
+
     const apiKey =
       (customApiKey && customApiKey.trim()) ||
       (typeof localStorage !== 'undefined' ? localStorage.getItem('gemini_api_key') : '') ||
       '';
 
-    // 1. Gemini APIキーが登録されている場合はAI新作問題に挑戦
+    // 2. Gemini APIキーが登録されている場合はAI新作問題に挑戦
     if (apiKey) {
       try {
         const aiQuestions = await this.fetchQuestionsFromGemini(grade, targetSubject, apiKey, 10);
@@ -209,7 +308,7 @@ ${subjectInstruction}
       }
     }
 
-    // 2. 内蔵問題エンジンによる出題（APIキー未設定時・オフライン時）
+    // 3. 内蔵問題エンジンによる出題（APIキー未設定時・オフライン時）
     if (targetSubject === 'english_listening') {
       return this.getEnglishListeningQuiz(10);
     }
@@ -233,7 +332,7 @@ ${subjectInstruction}
   }
 
   /**
-   * 互換用エイリアスメソッド（呼び出し元の命名揺れに対応）
+   * 互換用エイリアスメソッド
    */
   static async generateDailyQuiz(grade, subject, customApiKey = '', seedOffset = 0) {
     return this.generateQuiz(grade, subject, customApiKey, seedOffset);
