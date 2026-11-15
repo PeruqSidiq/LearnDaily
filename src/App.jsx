@@ -1,5 +1,5 @@
 // src/App.jsx
-// LearnDaily メインアプリケーション（Firebase認証・Firestore履歴同期・テスト進行・5画面ルーティング統合）
+// LearnDaily メインアプリケーション（Firebase認証・Firestore履歴＆管理者APIキー同期・5画面統合）
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -16,6 +16,10 @@ import {
   getFirestore,
   collection,
   addDoc,
+  doc,
+  getDoc,
+  setDoc,
+  deleteDoc,
   query,
   where,
   getDocs,
@@ -66,6 +70,8 @@ QuestionEngine.setFirestoreDb(db);
 const QUIZ_DURATION_SECONDS = AppConfig?.QUIZ_DURATION_SECONDS || 600;
 const ADMIN_EMAIL = AppConfig?.ADMIN_EMAIL || 'peruqsidiq@gmail.com';
 const LOCAL_HISTORY_KEY = 'learndaily_local_history';
+const ADMIN_SETTINGS_COLLECTION = 'admin_settings';
+const GEMINI_CONFIG_DOC = 'gemini_config';
 
 export default function App() {
   // --- 認証・ユーザー情報 ---
@@ -122,6 +128,35 @@ export default function App() {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('learndaily_selected_grade', String(nextGrade));
     }
+  }, []);
+
+  // =========================================================================
+  // 管理者専用：Firestore から Gemini API キーを自動読み込み
+  // =========================================================================
+  const loadAdminGeminiApiKey = useCallback(async (currentUser) => {
+    if (!currentUser || currentUser.email !== ADMIN_EMAIL) {
+      return '';
+    }
+
+    try {
+      const configRef = doc(db, ADMIN_SETTINGS_COLLECTION, GEMINI_CONFIG_DOC);
+      const snap = await getDoc(configRef);
+      if (snap.exists()) {
+        const cloudKey = String(snap.data()?.apiKey || '').trim();
+        setCustomApiKey(cloudKey);
+        if (typeof localStorage !== 'undefined') {
+          if (cloudKey) {
+            localStorage.setItem('gemini_api_key', cloudKey);
+          } else {
+            localStorage.removeItem('gemini_api_key');
+          }
+        }
+        return cloudKey;
+      }
+    } catch (err) {
+      console.warn('FirestoreからのGemini APIキー読み込みスキップ:', err);
+    }
+    return '';
   }, []);
 
   // =========================================================================
@@ -205,7 +240,11 @@ export default function App() {
           savedName || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'チャレンジャー';
         setCustomDisplayName(initialName);
         setNameDraft(initialName);
-        await loadLearningHistory(firebaseUser);
+
+        await Promise.all([
+          loadLearningHistory(firebaseUser),
+          loadAdminGeminiApiKey(firebaseUser)
+        ]);
       } else {
         setHistory([]);
         setAllRecords([]);
@@ -215,7 +254,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [loadLearningHistory]);
+  }, [loadLearningHistory, loadAdminGeminiApiKey]);
 
   // =========================================================================
   // テスト結果の集計・保存（手動完了＆タイムアップ共通）
@@ -391,7 +430,7 @@ export default function App() {
   };
 
   // =========================================================================
-  // 選択肢クリック・テスト中断・APIキー・表示名保存
+  // 選択肢クリック・テスト中断・APIキー（ローカル＆Firestore同期）・表示名保存
   // =========================================================================
   const handleSelectAnswer = (qIndex, choice) => {
     setAnswers((prev) => ({
@@ -408,11 +447,27 @@ export default function App() {
     setView('home');
   };
 
-  const handleSaveApiKey = (newKey) => {
-    setCustomApiKey(newKey);
+  const handleSaveApiKey = async (newKey) => {
+    const trimmed = String(newKey || '').trim();
+    setCustomApiKey(trimmed);
+
     if (typeof localStorage !== 'undefined') {
-      if (newKey) localStorage.setItem('gemini_api_key', newKey);
+      if (trimmed) localStorage.setItem('gemini_api_key', trimmed);
       else localStorage.removeItem('gemini_api_key');
+    }
+
+    // 管理者ログイン中の場合は Firestore の管理者専用ドキュメントにも同期保存
+    if (user && user.email === ADMIN_EMAIL) {
+      const configRef = doc(db, ADMIN_SETTINGS_COLLECTION, GEMINI_CONFIG_DOC);
+      if (trimmed) {
+        await setDoc(configRef, {
+          apiKey: trimmed,
+          updatedAt: new Date().toISOString(),
+          updatedBy: user.email
+        });
+      } else {
+        await deleteDoc(configRef);
+      }
     }
   };
 
