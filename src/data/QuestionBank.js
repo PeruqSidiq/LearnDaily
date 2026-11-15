@@ -1,12 +1,12 @@
 // src/data/QuestionBank.js
-// 全学年共通の英語入門問題 ＋ 2年生・5年生向けの国語・算数問題バンク
+// 全学年共通の英語入門問題（通常45問＋リスニング15問＝全60問） ＋ 2年生・5年生向けの国語・算数問題バンク
 
 export class QuestionBank {
   // =========================================================================
-  // 1. 英語（English）入門トレーニング問題（全25問・全学年共通）
+  // 1. 英語（English）入門トレーニング問題（全60問・全学年共通）
   // =========================================================================
   static ENGLISH_QUESTIONS = [
-    // --- あいさつ・基本表現 ---
+    // --- あいさつ・基本表現（5問） ---
     {
       id: 'en_01',
       category: 'あいさつ',
@@ -48,7 +48,7 @@ export class QuestionBank {
       explanation: 'See you（シー ユー）は「またね！」という親しみのあるあいさつです。'
     },
 
-    // --- 数字・曜日 ---
+    // --- 数字・曜日（4問） ---
     {
       id: 'en_06',
       category: '数字・曜日',
@@ -82,7 +82,7 @@ export class QuestionBank {
       explanation: 'Sun（太陽）の日で Sunday（サンデー）＝日曜日です。'
     },
 
-    // --- 色（カラー） ---
+    // --- 色（カラー）（4問） ---
     {
       id: 'en_10',
       category: '色・かたち',
@@ -116,7 +116,7 @@ export class QuestionBank {
       explanation: 'green（グリーン）は葉っぱや森のような「緑色」です。'
     },
 
-    // --- 動物・生き物 ---
+    // --- 動物・生き物（4問） ---
     {
       id: 'en_14',
       category: '動物',
@@ -150,7 +150,7 @@ export class QuestionBank {
       explanation: 'bird（バード）は「鳥」、fish（フィッシュ）は「魚」です。'
     },
 
-    // --- 食べ物・飲み物 ---
+    // --- 食べ物・飲み物（3問） ---
     {
       id: 'en_18',
       category: '食べ物',
@@ -176,7 +176,7 @@ export class QuestionBank {
       explanation: 'egg（エッグ）は「たまご」、bread（ブレッド）は「パン」です。'
     },
 
-    // --- 身の回り・日常フレーズ ---
+    // --- 身の回り・日常フレーズ（5問） ---
     {
       id: 'en_21',
       category: '身の回り',
@@ -216,6 +216,333 @@ export class QuestionBank {
       choices: ['What is this?', 'How old are you?', 'What time is it?', 'Can you swim?'],
       answer: 'What is this?',
       explanation: 'What is this?（ワット イズ ディス？）で「これは何ですか？」と聞けます。'
+    },
+
+    // =======================================================================
+    // ★ 新規追加：英単語・表現 20問（天気・乗り物・家族・からだ・動き）
+    // =======================================================================
+    // --- 天気（4問） ---
+    {
+      id: 'en_26',
+      category: '天気',
+      question: '「晴れ（はれ）」を表す英単語はどれ？',
+      choices: ['sunny', 'rainy', 'cloudy', 'snowy'],
+      answer: 'sunny',
+      explanation: 'sunny（サニー）は太陽が出て「晴れ」という意味です。'
+    },
+    {
+      id: 'en_27',
+      category: '天気',
+      question: '「雨（あめ）」の天気を表す英単語はどれ？',
+      choices: ['rainy', 'sunny', 'windy', 'fine'],
+      answer: 'rainy',
+      explanation: 'rain（雨）からできた rainy（レイニー）は「雨降り」を表します。'
+    },
+    {
+      id: 'en_28',
+      category: '天気',
+      question: '「くもり」を表す英単語はどれ？',
+      choices: ['cloudy', 'snowy', 'hot', 'cold'],
+      answer: 'cloudy',
+      explanation: 'cloud（雲）からできた cloudy（クラウディ）は「くもり」です。'
+    },
+    {
+      id: 'en_29',
+      category: '天気',
+      question: '「雪（ゆき）」の天気を表す英単語はどれ？',
+      choices: ['snowy', 'rainy', 'sunny', 'warm'],
+      answer: 'snowy',
+      explanation: 'snow（雪）からできた snowy（スノーウィー）は「雪降り」です。'
+    },
+
+    // --- 乗り物（4問） ---
+    {
+      id: 'en_30',
+      category: '乗り物',
+      question: '線路を走る「電車（でんしゃ）」を表す英単語はどれ？',
+      choices: ['train', 'car', 'bus', 'ship'],
+      answer: 'train',
+      explanation: 'train（トレイン）は「電車・列車」を表す英単語です。'
+    },
+    {
+      id: 'en_31',
+      category: '乗り物',
+      question: '空を飛ぶ「飛行機（ひこうき）」を表す英単語はどれ？',
+      choices: ['airplane', 'bicycle', 'boat', 'taxi'],
+      answer: 'airplane',
+      explanation: 'airplane（エアプレイン）は空を飛ぶ「飛行機」です。'
+    },
+    {
+      id: 'en_32',
+      category: '乗り物',
+      question: 'ペダルをこいで乗る「自転車（じてんしゃ）」を表す英単語はどれ？',
+      choices: ['bicycle', 'train', 'truck', 'bus'],
+      answer: 'bicycle',
+      explanation: 'bicycle（バイシクル）は「自転車」です（短く bike とも言います）。'
+    },
+    {
+      id: 'en_33',
+      category: '乗り物',
+      question: '道路を走る「自動車（くるま）」を表す英単語はどれ？',
+      choices: ['car', 'ship', 'plane', 'rocket'],
+      answer: 'car',
+      explanation: 'car（カー）は「自動車・車」を表す基本の英単語です。'
+    },
+
+    // --- 家族・身近な人（4問） ---
+    {
+      id: 'en_34',
+      category: '家族・人',
+      question: '「お母さん」を表す英単語はどれ？',
+      choices: ['mother', 'father', 'sister', 'brother'],
+      answer: 'mother',
+      explanation: 'mother（マザー）は「お母さん」、呼びかけるときは Mom（マム）とも言います。'
+    },
+    {
+      id: 'en_35',
+      category: '家族・人',
+      question: '「お父さん」を表す英単語はどれ？',
+      choices: ['father', 'mother', 'uncle', 'baby'],
+      answer: 'father',
+      explanation: 'father（ファザー）は「お父さん」、呼びかけるときは Dad（ダッド）とも言います。'
+    },
+    {
+      id: 'en_36',
+      category: '家族・人',
+      question: '「友だち」を表す英単語はどれ？',
+      choices: ['friend', 'teacher', 'student', 'family'],
+      answer: 'friend',
+      explanation: 'friend（フレンド）は「友だち」を表す大切な英単語です。'
+    },
+    {
+      id: 'en_37',
+      category: '家族・人',
+      question: '学校で教えてくれる「先生（せんせい）」を表す英単語はどれ？',
+      choices: ['teacher', 'doctor', 'singer', 'cook'],
+      answer: 'teacher',
+      explanation: 'teach（教える）人のことで teacher（ティーチャー）＝「先生」です。'
+    },
+
+    // --- からだのパーツ（4問） ---
+    {
+      id: 'en_38',
+      category: 'からだ',
+      question: 'ものを見る「目（め）」を表す英単語はどれ？',
+      choices: ['eye', 'ear', 'nose', 'mouth'],
+      answer: 'eye',
+      explanation: 'eye（アイ）は「目」です。両目なら eyes（アイズ）になります。'
+    },
+    {
+      id: 'en_39',
+      category: 'からだ',
+      question: '音を聞く「耳（みみ）」を表す英単語はどれ？',
+      choices: ['ear', 'eye', 'hand', 'foot'],
+      answer: 'ear',
+      explanation: 'ear（イヤー）は「耳」を表す英単語です。'
+    },
+    {
+      id: 'en_40',
+      category: 'からだ',
+      question: 'ごはんを食べたり話したりする「口（くち）」を表す英単語はどれ？',
+      choices: ['mouth', 'nose', 'head', 'hair'],
+      answer: 'mouth',
+      explanation: 'mouth（マウス）は「口」を表す英単語です。'
+    },
+    {
+      id: 'en_41',
+      category: 'からだ',
+      question: 'えんぴつを持ったり拍手したりする「手（て）」を表す英単語はどれ？',
+      choices: ['hand', 'leg', 'face', 'neck'],
+      answer: 'hand',
+      explanation: 'hand（ハンド）は「手」です。手を洗うは wash hands と言います。'
+    },
+
+    // --- よく使う動き・気持ち（4問） ---
+    {
+      id: 'en_42',
+      category: '動き・気持ち',
+      question: 'プールや海で「泳ぐ（およぐ）」を表す英単語はどれ？',
+      choices: ['swim', 'run', 'jump', 'sleep'],
+      answer: 'swim',
+      explanation: 'swim（スイム）は「泳ぐ」です。水泳は swimming です。'
+    },
+    {
+      id: 'en_43',
+      category: '動き・気持ち',
+      question: '運動場などで「走る（はしる）」を表す英単語はどれ？',
+      choices: ['run', 'walk', 'stop', 'sit'],
+      answer: 'run',
+      explanation: 'run（ラン）は「走る」、walk（ウォーク）は「歩く」です。'
+    },
+    {
+      id: 'en_44',
+      category: '動き・気持ち',
+      question: '「うれしい・しあわせ」を表す英単語はどれ？',
+      choices: ['happy', 'sad', 'angry', 'sleepy'],
+      answer: 'happy',
+      explanation: 'happy（ハッピー）は「うれしい・楽しい」という気持ちを表します。'
+    },
+    {
+      id: 'en_45',
+      category: '動き・気持ち',
+      question: '「おなかがすいた」を表す英単語はどれ？',
+      choices: ['hungry', 'thirsty', 'tired', 'full'],
+      answer: 'hungry',
+      explanation: 'I am hungry.（アイ アム ハングリー）で「おなかがすいた！」になります。'
+    },
+
+    // =======================================================================
+    // ★ 新規追加：発音を聞いて意味を選ぶリスニング問題（15問）
+    // =======================================================================
+    {
+      id: 'en_ls_01',
+      type: 'listening',
+      audioText: 'Good afternoon',
+      category: 'リスニング（あいさつ）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、正しい意味をえらぼう！',
+      choices: ['こんにちは（昼のあいさつ）', 'おやすみなさい', 'ありがとう', 'はじめまして'],
+      answer: 'こんにちは（昼のあいさつ）',
+      explanation: '発音された英語は「Good afternoon（グッド アフタヌーン）」＝「こんにちは」です。'
+    },
+    {
+      id: 'en_ls_02',
+      type: 'listening',
+      audioText: 'Excuse me',
+      category: 'リスニング（あいさつ）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、正しい意味をえらぼう！',
+      choices: ['すみません（声をかけるとき）', 'おめでとう', 'またあした', 'いただきます'],
+      answer: 'すみません（声をかけるとき）',
+      explanation: '発音された英語は「Excuse me（エクスキューズ ミー）」＝「すみません」です。'
+    },
+    {
+      id: 'en_ls_03',
+      type: 'listening',
+      audioText: 'elephant',
+      category: 'リスニング（動物）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、どの動物のことかえらぼう！',
+      choices: ['ゾウ', 'キリン', 'ライオン', 'ペンギン'],
+      answer: 'ゾウ',
+      explanation: '発音された英語は「elephant（エレファント）」＝鼻の長い「ゾウ」です。'
+    },
+    {
+      id: 'en_ls_04',
+      type: 'listening',
+      audioText: 'dolphin',
+      category: 'リスニング（動物）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、どの生き物のことかえらぼう！',
+      choices: ['イルカ', 'クジラ', 'サメ', 'カメ'],
+      answer: 'イルカ',
+      explanation: '発音された英語は「dolphin（ドルフィン）」＝海の「イルカ」です。'
+    },
+    {
+      id: 'en_ls_05',
+      type: 'listening',
+      audioText: 'butterfly',
+      category: 'リスニング（生き物）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、どの生き物のことかえらぼう！',
+      choices: ['チョウ（ちょうちょ）', 'カブトムシ', 'テントウムシ', 'トンボ'],
+      answer: 'チョウ（ちょうちょ）',
+      explanation: '発音された英語は「butterfly（バタフライ）」＝「チョウ」です。'
+    },
+    {
+      id: 'en_ls_06',
+      type: 'listening',
+      audioText: 'strawberry',
+      category: 'リスニング（食べ物）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、どの食べ物のことかえらぼう！',
+      choices: ['いちご', 'スイカ', 'ぶどう', 'もも'],
+      answer: 'いちご',
+      explanation: '発音された英語は「strawberry（ストロベリー）」＝赤い「いちご」です。'
+    },
+    {
+      id: 'en_ls_07',
+      type: 'listening',
+      audioText: 'watermelon',
+      category: 'リスニング（食べ物）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、どの食べ物のことかえらぼう！',
+      choices: ['スイカ', 'メロン', 'パイナップル', 'バナナ'],
+      answer: 'スイカ',
+      explanation: '発音された英語は「watermelon（ウォーターメロン）」＝夏の「スイカ」です。'
+    },
+    {
+      id: 'en_ls_08',
+      type: 'listening',
+      audioText: 'breakfast',
+      category: 'リスニング（生活）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、正しい意味をえらぼう！',
+      choices: ['朝ごはん（朝食）', '昼ごはん（昼食）', '夜ごはん（夕食）', 'おやつ'],
+      answer: '朝ごはん（朝食）',
+      explanation: '発音された英語は「breakfast（ブレックファスト）」＝「朝ごはん」です。'
+    },
+    {
+      id: 'en_ls_09',
+      type: 'listening',
+      audioText: 'library',
+      category: 'リスニング（場所）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、どの場所のことかえらぼう！',
+      choices: ['図書館（としょかん）', '駅（えき）', '病院（びょういん）', '動物園（どうぶつえん）'],
+      answer: '図書館（としょかん）',
+      explanation: '発音された英語は「library（ライブラリー）」＝本がたくさんある「図書館」です。'
+    },
+    {
+      id: 'en_ls_10',
+      type: 'listening',
+      audioText: 'umbrella',
+      category: 'リスニング（持ち物）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、どの持ち物のことかえらぼう！',
+      choices: ['かさ（雨傘）', 'くつ', 'ぼうし', 'とけい'],
+      answer: 'かさ（雨傘）',
+      explanation: '発音された英語は「umbrella（アンブレラ）」＝雨の日にさす「かさ」です。'
+    },
+    {
+      id: 'en_ls_11',
+      type: 'listening',
+      audioText: 'Happy birthday!',
+      category: 'リスニング（フレーズ）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、正しい意味をえらぼう！',
+      choices: ['お誕生日おめでとう！', 'あけましておめでとう！', 'がんばってね！', 'おかえりなさい！'],
+      answer: 'お誕生日おめでとう！',
+      explanation: '発音された英語は「Happy birthday!（ハッピー バースデー）」＝「お誕生日おめでとう！」です。'
+    },
+    {
+      id: 'en_ls_12',
+      type: 'listening',
+      audioText: 'See you tomorrow.',
+      category: 'リスニング（フレーズ）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、正しい意味をえらぼう！',
+      choices: ['またあしたね。', 'はじめまして。', 'お元気ですか？', '気をつけてね。'],
+      answer: 'またあしたね。',
+      explanation: '発音された英語は「See you tomorrow.（シー ユー トゥモロー）」＝「またあしたね」です。'
+    },
+    {
+      id: 'en_ls_13',
+      type: 'listening',
+      audioText: 'I can swim.',
+      category: 'リスニング（フレーズ）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、正しい意味をえらぼう！',
+      choices: ['私は泳ぐことができます。', '私は速く走れます。', '私はピアノが弾けます。', '私は英語が話せます。'],
+      answer: '私は泳ぐことができます。',
+      explanation: '発音された英語は「I can swim.（アイ キャン スイム）」＝「私は泳ぐことができます」です。'
+    },
+    {
+      id: 'en_ls_14',
+      type: 'listening',
+      audioText: 'It is sunny today.',
+      category: 'リスニング（フレーズ）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、正しい意味をえらぼう！',
+      choices: ['今日は晴れです。', '今日は雨です。', '今日はとても寒いです。', '明日は雪が降ります。'],
+      answer: '今日は晴れです。',
+      explanation: '発音された英語は「It is sunny today.（イット イズ サニー トゥデイ）」＝「今日は晴れです」です。'
+    },
+    {
+      id: 'en_ls_15',
+      type: 'listening',
+      audioText: 'Good job!',
+      category: 'リスニング（フレーズ）',
+      question: '【リスニング】スピーカーボタンを押して英語の発音を聞き、正しい意味をえらぼう！',
+      choices: ['よくできたね！（すごいね！）', 'ごめんなさい！', 'ちょっと待ってね！', 'おやすみなさい！'],
+      answer: 'よくできたね！（すごいね！）',
+      explanation: '発音された英語は「Good job!（グッド ジョブ）」＝「よくできたね！」とほめる表現です。'
     }
   ];
 
@@ -433,7 +760,7 @@ export class QuestionBank {
   ];
 
   // =========================================================================
-  // 5. 互換用アクセサメソッド（どの呼び出し方でも動作するよう定義）
+  // 5. 互換用アクセサメソッド
   // =========================================================================
   static getEnglishQuestions() {
     return this.ENGLISH_QUESTIONS;
