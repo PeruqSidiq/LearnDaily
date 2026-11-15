@@ -1,71 +1,52 @@
 // src/config/AppConfig.js
-// アプリケーション全体の設定・定数管理クラス
+// LearnDaily アプリケーション全体設定（Firebase環境変数・Geminiモデル・科目ラベル・管理者権限）
 
-export class AppConfig {
-  // =========================================================================
-  // 1. アプリケーション基本情報
-  // =========================================================================
-  static APP_TITLE = '未来を生き抜く 思考力トレーニング';
-  static APP_SUBTITLE = '毎日1回の習慣で、自ら考え・伸び続ける頭を育てる';
-  static APP_ICON = '未';
+export const AppConfig = {
+  // アプリ基本情報
+  APP_TITLE: 'LearnDaily',
+  APP_SUBTITLE: '未来を生き抜く思考力＆英語トレーニング',
 
-  // =========================================================================
-  // 2. 保護者・管理者設定
-  // =========================================================================
-  static ADMIN_EMAIL = 'peruqsidiq@gmail.com';
-  static FIRESTORE_COLLECTION = 'quiz_records';
+  // 管理者メールアドレス（保護者ダッシュボード・AI問題再作成権限）
+  ADMIN_EMAIL: 'peruqsidiq@gmail.com',
 
-  // =========================================================================
-  // 3. Firebase 接続設定（Vercel環境変数または直接入力用）
-  // =========================================================================
-  static FIREBASE_CONFIG = { 
-    apiKey: "AIzaSyBbqWjybJrRu4VR90CJohRk-QsbFEFlrj8", 
-    authDomain: "learndaily-69355.firebaseapp.com", 
-    projectId: "learndaily-69355",
-    storageBucket: "learndaily-69355.firebasestorage.app",
-    messagingSenderId: "161457830120", 
-    appId: "1:161457830120:web:d8465efae2b3e95c12f15d",
-    measurementId: "G-RYTSDGW0GP"};
-  
-  static FIREBASE_CONFIG = {
-    apiKey:
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || '',
-    authDomain:
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) || '',
-    projectId:
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_PROJECT_ID) || '',
-    storageBucket:
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) || '',
-    messagingSenderId:
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || '',
-    appId:
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_APP_ID) || ''
-  };
+  // Gemini API モデル設定（最新推奨モデル）
+  GEMINI_MODEL: 'gemini-3.8-flash',
+  GEMINI_FALLBACK_MODELS: [
+    'gemini-3.8-flash',
+    'gemini-3.8-flash-lite',
+    'gemini-3-flash',
+    'gemini-2.5-flash'
+  ],
 
-  // =========================================================================
-  // 4. 科目ラベル定義（英語科目を含む）
-  // =========================================================================
-  static SUBJECT_LABELS = {
+  // テスト基本設定
+  QUIZ_DURATION_SECONDS: 600, // 制限時間：10分（600秒）
+  QUESTIONS_PER_QUIZ: 10,     // 1回あたりの出題数：10問
+  PASSING_PERCENTAGE: 70,     // 目標クリアライン：70%
+
+  // 対象学年設定
+  GRADES: [
+    { id: '2', label: '小学2年生' },
+    { id: '5', label: '小学5年生' }
+  ],
+
+  // 科目別表示ラベル（全画面共通）
+  SUBJECT_LABELS: {
     math: '算数・思考力',
-    japanese: '国語・読解＆語彙',
+    japanese: '国語・読解＆ことば',
     english: '英語（English）入門',
+    english_listening: '英語リスニング集中',
     mixed: '総合思考力チャレンジ'
-  };
+  },
 
-  // =========================================================================
-  // 5. 分析・レーダーチャート用項目定義
-  // =========================================================================
-  static ANALYTICS_CATEGORIES = [
-    { key: 'math', label: '算数力' },
-    { key: 'japanese', label: '国語力' },
-    { key: 'english', label: '英語力' },
-    { key: 'mixed', label: '総合力' }
-  ];
-
-  // =========================================================================
-  // 6. デフォルトAIモデル設定（Gemini API）
-  // =========================================================================
-  static GEMINI_MODEL = 'gemini-2.5-flash';
-}
+  // Firebase 接続設定（Vite / Vercel 環境変数から自動読み込み）
+  FIREBASE_CONFIG: {
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+    appId: import.meta.env.VITE_FIREBASE_APP_ID || ''
+  }
+};
 
 export default AppConfig;
