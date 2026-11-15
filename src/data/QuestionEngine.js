@@ -305,7 +305,92 @@ export class QuestionEngine {
   }
 
   /**
-   * Gemini API を使って新しい問題を自動生成（404自動モデル切替フォールバック付き）
+   * APIキーで利用可能な generateContent 対応モデル一覧を自動取得（404完全回避用）
+   */
+  static async discoverAvailableGeminiModels(cleanKey) {
+    try {
+      const listEndpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(
+        cleanKey
+      )}`;
+      const res = await fetch(listEndpoint);
+      if (!res.ok) return [];
+      const json = await res.json();
+      const models = Array.isArray(json?.models) ? json.models : [];
+
+      return models
+        .filter(
+          (m) =>
+            Array.isArray(m.supportedGenerationMethods) &&
+            m.supportedGenerationMethods.includes('generateContent') &&
+            typeof m.name === 'string'
+        )
+        .map((m) => m.name.replace(/^models\//, ''))
+        .sort((a, b) => {
+          const score = (name) => {
+            let s = 0;
+            if (name.includes('flash')) s += 100;
+            if (name.includes('3.8')) s += 50;
+            else if (name.includes('gemini-3')) s += 40;
+            else if (name.includes('2.5')) s += 30;
+            if (name.includes('lite')) s -= 5;
+            if (name.includes('exp') || name.includes('preview')) s -= 10;
+            return s;
+          };
+          return score(b) - score(a);
+        });
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * 単一モデルへの generateContent リクエスト実行ヘルパー
+   */
+  static async requestGeminiWithModel(model, cleanKey, prompt) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      model
+    )}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.85,
+          responseMimeType: 'application/json'
+        }
+      })
+    });
+
+    if (!response.ok) {
+      let apiDetail = '';
+      try {
+        const errBody = await response.json();
+        apiDetail = errBody?.error?.message || '';
+      } catch {
+        apiDetail = '';
+      }
+
+      const err = new Error(
+        `Gemini APIエラー (${response.status}): ${apiDetail || 'APIキーまたは利用制限を確認してください。'}`
+      );
+      err.status = response.status;
+      err.apiDetail = apiDetail;
+      throw err;
+    }
+
+    const data = await response.json();
+    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+    const cleanedJson = rawText
+      .replace(/^```json\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
+    return JSON.parse(cleanedJson);
+  }
+
+  /**
+   * Gemini API を使って新しい問題を自動生成（gemini-3.8-flash 優先 ＋ 利用可能モデル自動検出）
    */
   static async fetchQuestionsFromGemini(grade, subject, apiKey, count = 10, customTopic = '') {
     const cleanKey = String(apiKey || '').trim();
@@ -346,76 +431,61 @@ ${subjectInstruction}${topicConstraint}
   }
 ]`;
 
-    // AppConfig の指定モデルを先頭に、404時に自動で有効なモデルへフォールバックする候補リスト
-    const configuredModel = AppConfig && AppConfig.GEMINI_MODEL;
-    const candidateModels = Array.from(
+    // 1. まず推奨の gemini-3.8-flash を先頭に試行
+    const initialCandidates = Array.from(
       new Set(
         [
-          configuredModel,
-          'gemini-2.5-flash',
-          'gemini-2.5-flash-lite',
-          'gemini-2.0-flash'
+          'gemini-3.8-flash',
+          'gemini-3.8-flash-lite',
+          AppConfig && AppConfig.GEMINI_MODEL,
+          'gemini-3-flash',
+          'gemini-2.5-flash'
         ].filter(Boolean)
       )
     );
 
-    let lastErrorMessage = '';
+    const triedModels = new Set();
+    let lastError = null;
 
-    for (const model of candidateModels) {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-        model
-      )}:generateContent?key=${encodeURIComponent(cleanKey)}`;
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.85,
-            responseMimeType: 'application/json'
-          }
-        })
-      });
-
-      if (!response.ok) {
-        let apiDetail = '';
-        try {
-          const errBody = await response.json();
-          apiDetail = errBody?.error?.message || '';
-        } catch {
-          apiDetail = '';
+    for (const model of initialCandidates) {
+      triedModels.add(model);
+      try {
+        const parsed = await this.requestGeminiWithModel(model, cleanKey, prompt);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const normalizedSubject = isEnglish ? 'english' : subject;
+          return this.normalizeQuestions(parsed, normalizedSubject, count);
         }
-
-        // 404（モデル名未検出・終了）の場合は次の候補モデルへ自動切替
-        if (response.status === 404) {
-          console.warn(`モデル ${model} が404のため次のモデルへ切り替えます:`, apiDetail);
-          lastErrorMessage = `モデルが見つかりません (404): ${apiDetail || model}`;
-          continue;
+      } catch (err) {
+        lastError = err;
+        // 404（モデル廃止・未検出）のみ次の候補モデルを試行、400/403等は即停止
+        if (err.status !== 404) {
+          throw err;
         }
-
-        // 400（APIキー無効）や 403（権限エラー）などは詳細メッセージを表示して停止
-        throw new Error(
-          `Gemini APIエラー (${response.status}): ${apiDetail || 'APIキーまたは利用制限を確認してください。'}`
-        );
       }
+    }
 
-      const data = await response.json();
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
-      const cleanedJson = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-      const parsed = JSON.parse(cleanedJson);
-
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        throw new Error('AIからの問題データの解析に失敗しました。もう一度お試しください。');
+    // 2. 候補すべてが404だった場合、APIキーで利用可能なモデル一覧を自動取得して実行
+    const discoveredModels = await this.discoverAvailableGeminiModels(cleanKey);
+    for (const model of discoveredModels) {
+      if (triedModels.has(model)) continue;
+      triedModels.add(model);
+      try {
+        const parsed = await this.requestGeminiWithModel(model, cleanKey, prompt);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const normalizedSubject = isEnglish ? 'english' : subject;
+          return this.normalizeQuestions(parsed, normalizedSubject, count);
+        }
+      } catch (err) {
+        lastError = err;
+        if (err.status !== 404) {
+          throw err;
+        }
       }
-
-      const normalizedSubject = isEnglish ? 'english' : subject;
-      return this.normalizeQuestions(parsed, normalizedSubject, count);
     }
 
     throw new Error(
-      lastErrorMessage ||
-        '利用可能なGeminiモデルに接続できませんでした (404)。Google AI StudioでAPIキーのプロジェクト設定を確認してください。'
+      lastError?.message ||
+        '利用可能なGeminiモデルに接続できませんでした (404)。Google AI Studioのプロジェクト設定を確認してください。'
     );
   }
 
