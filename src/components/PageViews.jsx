@@ -1286,7 +1286,7 @@ export function HistoryView({
           <Calendar className="w-4 h-4 text-emerald-600" />
           最近30日間の学習スタンプ
         </h3>
-        <div className="grid grid-cols-10 sm:grid-cols-15 gap-2">
+        <div className="grid grid-cols-6 sm:grid-cols-10 gap-2">
           {last30Days.map((d) => (
             <div
               key={d.iso}
@@ -1493,7 +1493,6 @@ export function AdminView({
         });
       }
       const entry = map.get(key);
-      // より新しい表示名があれば更新
       if (rec.userName && entry.name !== rec.userName) {
         entry.name = rec.userName;
       }
@@ -1517,7 +1516,6 @@ export function AdminView({
         (r) => getJstDateOnly(r.date || r.createdAt) === todayStr
       ).length;
 
-      // 得意科目と要復習科目を算出
       const subjScores = {};
       learner.records.forEach((r) => {
         const sKey = isEnglishSubject(r.subject) ? 'english' : r.subject || 'math';
@@ -1563,13 +1561,11 @@ export function AdminView({
     const currentYearMonth = todayStr.slice(0, 7);
 
     return baseRecords.filter((rec) => {
-      // 1. 学習者フィルター
       if (selectedLearnerKey !== 'all') {
         const key = rec.uid || rec.userEmail || rec.userName || 'unknown';
         if (key !== selectedLearnerKey) return false;
       }
 
-      // 2. 科目フィルター
       if (statSubjectFilter !== 'all') {
         if (statSubjectFilter === 'english') {
           if (!isEnglishSubject(rec.subject)) return false;
@@ -1578,7 +1574,6 @@ export function AdminView({
         }
       }
 
-      // 3. 期間フィルター
       if (statPeriodFilter === 'all') return true;
       const jstDay = getJstDateOnly(rec.date || rec.createdAt);
       if (statPeriodFilter === 'today') {
@@ -2052,7 +2047,6 @@ export function AdminView({
               絞り込み：
             </div>
 
-            {/* 学習者選択 */}
             <select
               value={selectedLearnerKey}
               onChange={(e) => setSelectedLearnerKey(e.target.value)}
@@ -2066,7 +2060,6 @@ export function AdminView({
               ))}
             </select>
 
-            {/* 科目選択 */}
             <select
               value={statSubjectFilter}
               onChange={(e) => setStatSubjectFilter(e.target.value)}
@@ -2079,7 +2072,6 @@ export function AdminView({
               <option value="mixed">総合チャレンジ</option>
             </select>
 
-            {/* 期間選択 */}
             <select
               value={statPeriodFilter}
               onChange={(e) => setStatPeriodFilter(e.target.value)}
@@ -2209,7 +2201,7 @@ export function AdminView({
           </div>
         </div>
 
-        {/* 直近14日間の日別学習推移チャート */}
+        {/* 直近14日間の日別学習推移チャート（横14列・固定バー枠対応） */}
         <div className="bg-slate-50/70 rounded-2xl p-4 sm:p-5 border border-slate-200/80 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <h4 className="text-sm font-extrabold text-slate-800 flex items-center gap-1.5">
@@ -2221,36 +2213,43 @@ export function AdminView({
             </span>
           </div>
 
-          <div className="grid grid-cols-14 gap-1.5 items-end h-32 pt-5 px-1 bg-white rounded-xl border border-slate-100">
-            {detailedAnalytics.dailyTrend.map((day) => {
-              const barHeight = day.count > 0 ? Math.max(18, day.rate) : 6;
-              return (
-                <div
-                  key={day.dayIso}
-                  title={`${day.dayIso}: ${day.count}回実施 / 正答率 ${day.rate}%`}
-                  className="flex flex-col items-center justify-end h-full pb-1.5"
-                >
-                  <span className="text-[10px] font-extrabold text-indigo-700 mb-1">
-                    {day.count > 0 ? `${day.count}回` : ''}
-                  </span>
+          <div className="overflow-x-auto">
+            <div
+              className="grid gap-1 sm:gap-1.5 items-end pt-3 pb-2.5 px-2 bg-white rounded-xl border border-slate-100 min-w-[460px]"
+              style={{ gridTemplateColumns: 'repeat(14, minmax(0, 1fr))' }}
+            >
+              {detailedAnalytics.dailyTrend.map((day) => {
+                const barHeight = day.count > 0 ? Math.max(16, day.rate) : 6;
+                return (
                   <div
-                    className={`w-full max-w-[22px] rounded-t-md transition-all ${
-                      day.count === 0
-                        ? 'bg-slate-200'
-                        : day.rate >= 80
-                        ? 'bg-emerald-500'
-                        : day.rate >= 60
-                        ? 'bg-indigo-500'
-                        : 'bg-amber-500'
-                    }`}
-                    style={{ height: `${barHeight}%` }}
-                  />
-                  <span className="text-[9px] font-bold text-slate-400 mt-1">
-                    {day.shortDay}
-                  </span>
-                </div>
-              );
-            })}
+                    key={day.dayIso}
+                    title={`${day.dayIso}: ${day.count}回実施 / 正答率 ${day.rate}%`}
+                    className="flex flex-col items-center justify-end"
+                  >
+                    <span className="text-[10px] font-extrabold text-indigo-700 mb-1 h-4 flex items-center justify-center whitespace-nowrap">
+                      {day.count > 0 ? `${day.count}回` : ''}
+                    </span>
+                    <div className="w-full h-24 flex items-end justify-center bg-slate-50/70 rounded-t-md">
+                      <div
+                        className={`w-full max-w-[22px] rounded-t-md transition-all ${
+                          day.count === 0
+                            ? 'bg-slate-200'
+                            : day.rate >= 80
+                            ? 'bg-emerald-500'
+                            : day.rate >= 60
+                            ? 'bg-indigo-500'
+                            : 'bg-amber-500'
+                        }`}
+                        style={{ height: `${barHeight}%` }}
+                      />
+                    </div>
+                    <span className="text-[9px] font-bold text-slate-500 mt-1.5 whitespace-nowrap">
+                      {day.shortDay}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
